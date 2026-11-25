@@ -40,7 +40,7 @@
 ## 7. CI и сборка
 
 - [x] 7.1 Конфигурация electron-builder: цели NSIS `.exe` (Windows), macOS arm64 + universal, `.deb` и `tar.gz` (Linux). Проверка: локальная сборка текущей ОС выдаёт ожидаемый артефакт.
-- [ ] 7.2 Workflow GitHub Actions: матрица windows/macos/ubuntu — vitest → electron-builder (`--publish never`) → upload артефактов; на PR без публикации, на тегах `v*`. Проверка: зелёный прогон PR-джобы с артефактами во вкладке Actions.
+- [ ] 7.2 Workflow GitHub Actions: матрица windows/macos/ubuntu — vitest → electron-builder (`--publish never`) → upload артефактов; на PR без публикации, на тегах `v*`. Проверка: зелёный прогон PR-джобы с артефактами во вкладке Actions. **Отложено по решению пользователя (2026-11-25):** работа идёт в фича-ветке `feaure/mvp`, пуш в main — после завершения MVP; пуш фича-ветки workflow не запускает. Файл workflow уже в репозитории; закроется первым зелёным прогоном — PR (достаточно draft) или пушем в main.
 
 ## 8. Приёмка скелета
 
@@ -48,5 +48,6 @@
 
 ## Workflow follow-up
 
+- 7.2 закрывается автоматически первым прогоном CI: `pull_request` (draft-PR в main достаточен, вливать не нужно) или `push` в main после MVP. Ценность раннего прогона — проверка нативной сборки better-sqlite3 на Windows/Linux, которую локально (macOS) не проверить.
 - После реализации: `openspec archive add-app-skeleton` (спеки не менялись — `skip_specs: true`, синхронизация дельт не требуется).
 - Следующий change по плану этапов: справочники и настройки (`reference-catalogs` + `application-settings`), затем `batch-management`.

@@ -3,6 +3,7 @@
   "productName": "Winemaker",
   "version": "0.1.0",
   "description": "Помощник винодела — локальное десктоп-приложение",
+  "author": "Petr Bondarenko <mdma.zone@gmail.com>",
   "private": true,
   "main": "out/main/index.js",
   "scripts": {
