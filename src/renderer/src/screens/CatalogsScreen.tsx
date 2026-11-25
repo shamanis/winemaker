@@ -55,13 +55,16 @@ function InstrumentsTab(): ReactElement {
   const submit = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault()
     setError(null)
-    const form = new FormData(event.currentTarget)
-    const type = form.get('type') as InstrumentType
-    const wcfRaw = String(form.get('wcf') ?? '').trim()
-    const offsetRaw = String(form.get('calibrationOffsetSg') ?? '').trim()
-    const tcalRaw = String(form.get('calibrationTempC') ?? '').trim()
+    // Захват до await: React обнуляет currentTarget после приостановки
+    // обработчика — обращение после await даёт TypeError.
+    const form = event.currentTarget
+    const formData = new FormData(form)
+    const type = formData.get('type') as InstrumentType
+    const wcfRaw = String(formData.get('wcf') ?? '').trim()
+    const offsetRaw = String(formData.get('calibrationOffsetSg') ?? '').trim()
+    const tcalRaw = String(formData.get('calibrationTempC') ?? '').trim()
     const input: InstrumentInput = {
-      name: String(form.get('name') ?? '').trim(),
+      name: String(formData.get('name') ?? '').trim(),
       type,
       wcf: wcfRaw ? Number(wcfRaw) : null,
       calibrationOffsetSg: offsetRaw ? Number(offsetRaw) : null,
@@ -74,7 +77,7 @@ function InstrumentsTab(): ReactElement {
         await createInstrument(input)
       }
       setEditing(null)
-      event.currentTarget.reset()
+      form.reset()
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     }
@@ -253,9 +256,10 @@ function StrainsTab(): ReactElement {
   const submit = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault()
     setError(null)
-    const form = new FormData(event.currentTarget)
+    const form = event.currentTarget
+    const formData = new FormData(form)
     const num = (key: string): number | null => {
-      const raw = String(form.get(key) ?? '').trim()
+      const raw = String(formData.get(key) ?? '').trim()
       return raw ? Number(raw) : null
     }
     const tempMinC = num('tempMinC')
@@ -265,12 +269,12 @@ function StrainsTab(): ReactElement {
       return
     }
     const input: StrainInput = {
-      name: String(form.get('name') ?? '').trim(),
-      producer: String(form.get('producer') ?? '').trim() || null,
+      name: String(formData.get('name') ?? '').trim(),
+      producer: String(formData.get('producer') ?? '').trim() || null,
       tempMinC,
       tempMaxC,
       alcoholTolerancePct: num('alcoholTolerancePct'),
-      notes: String(form.get('notes') ?? '').trim() || null
+      notes: String(formData.get('notes') ?? '').trim() || null
     }
     try {
       if (editing) {
@@ -279,7 +283,7 @@ function StrainsTab(): ReactElement {
         await createStrain(input)
       }
       setEditing(null)
-      event.currentTarget.reset()
+      form.reset()
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     }
