@@ -45,7 +45,7 @@ function setup(handle: DatabaseHandle) {
           }
         : null,
       correctionFormula: formula,
-      startCorrectedBrix: startParams?.gravity.correctedBrix ?? null,
+      startRawGravity: startParams?.gravity.raw ? { value: startParams.gravity.raw.value, unit: startParams.gravity.raw.unit as 'sg' | 'brix' } : null,
       startOgSg: startParams?.gravity.ogSg ?? null,
       batchStartDateUtc: batch?.batch.startDateUtc ?? '2026-01-01T00:00:00.000Z'
     }
@@ -92,7 +92,7 @@ describe('MeasurementRepository', () => {
     expect(m.correctedSg).toBeGreaterThan(1.0)
     expect(m.correctedSg).toBeLessThan(1.05)
     const stored = m.corrections as { steps: unknown[]; warnings: string[] }
-    expect(stored.steps.length).toBeGreaterThanOrEqual(2)
+    expect(stored.steps.length).toBeGreaterThanOrEqual(1)
     expect(stored.warnings).toHaveLength(1) // нет калибровочной пары
   })
 

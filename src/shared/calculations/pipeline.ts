@@ -38,9 +38,12 @@ export interface PipelineContext {
   /** Для density обязателен (TypeError при null); для temp/ph не нужен. */
   readonly instrument: PipelineInstrument | null
   readonly correctionFormula: CorrectionFormula
-  /** Corrected Brix старта партии (Bi) — из startParams. */
-  readonly startCorrectedBrix?: number | null
-  /** OG в SG — если Bi нет (старт в SG), Bi вычисляется инверсией. */
+  /**
+   * Сырое стартовое показание партии (без WCF) — вход формулы Террилла,
+   * которая регрессирована на сырых показаниях (design: correction inputs).
+   */
+  readonly startRawGravity?: { value: number; unit: DensityUnit } | null
+  /** OG в SG (с WCF) — для линейной Баллинга (OE — истинный экстракт). */
   readonly startOgSg?: number | null
   readonly batchStartDateUtc: string
 }
@@ -129,8 +132,63 @@ export function resolveMeasurement(
     return { correctedSg: sg, correctedBrix: null, corrections, warnings }
   }
 
-  /* Рефрактометр: WCF → [Террилл | линейная] для бродящего сусла */
+  /* Рефрактометр: до брожения WCF → SG; на брожении Террилл/Баллинг на сырых показаниях */
   if (isRefractometer(instrument.type)) {
+    const fermenting =
+      ctx.startOgSg != null && input.measuredAtUtc > ctx.batchStartDateUtc
+
+    if (fermenting) {
+      // Предупреждение об усреднённой коррекции действует и здесь (спека 6.3.5):
+      // без пары применён усреднённый WCF для OG, а регрессия Террилла —
+      // по среднему суслу.
+      if (!instrument.hasCalibrationPair) {
+        warnings.push(
+          'У рефрактометра нет калибровочной пары — коррекция ведётся по усреднённой формуле (спека 6.3.5)'
+        )
+      }
+      // Формула Террилла регрессирована на СЫРЫХ показаниях (без WCF):
+      // алкогольное искажение уже учтено в регрессии (design: correction inputs).
+      const biRaw =
+        ctx.startRawGravity?.unit === 'brix'
+          ? ctx.startRawGravity.value
+          : ctx.startOgSg != null
+            ? invertBrixToSg(ctx.startOgSg) // старт в SG: сахарный эквивалент OG
+            : null
+      const bfRaw =
+        input.unit === 'brix'
+          ? input.rawValue
+          : invertBrixToSg(input.rawValue)
+      if (biRaw == null) {
+        return { correctedSg: null, correctedBrix: null, corrections, warnings }
+      }
+
+      const formula = ctx.correctionFormula
+      let sg: number
+      if (formula === 'linear') {
+        // Баллинг: OE — истинный экстракт старта (из OG с WCF),
+        // AE — кажущийся экстракт из сырого текущего показания.
+        const oe = invertBrixToSg(ctx.startOgSg as number)
+        const ae = invertBrixToSg(brixToSg(bfRaw))
+        sg = linearCorrection(oe, ae)
+        corrections.push({
+          type: 'fermentation-correction',
+          input: bfRaw,
+          output: sg,
+          note: `Линейная (Баллинг RE): OE=${oe.toFixed(2)} °P, AE=${ae.toFixed(2)} °P (Bi=${biRaw.toFixed(2)}, Bf=${bfRaw.toFixed(2)} °Bx сырые)`
+        })
+      } else {
+        sg = terrillCorrection(biRaw, bfRaw)
+        corrections.push({
+          type: 'fermentation-correction',
+          input: bfRaw,
+          output: sg,
+          note: `Формула Террилла: Bi=${biRaw.toFixed(2)}, Bf=${bfRaw.toFixed(2)} °Bx (сырые показания, без WCF)`
+        })
+      }
+      return { correctedSg: sg, correctedBrix: null, corrections, warnings }
+    }
+
+    // До брожения: WCF meaningful (сахарный эквивалент сусла).
     const wcf = instrument.wcf ?? 1
     const correctedBrix = input.rawValue * wcf
     corrections.push({
@@ -145,31 +203,6 @@ export function resolveMeasurement(
       warnings.push(
         'У рефрактометра нет калибровочной пары — коррекция ведётся по усреднённому коэффициенту (спека 6.3.5)'
       )
-    }
-
-    const bi =
-      ctx.startCorrectedBrix != null
-        ? ctx.startCorrectedBrix
-        : ctx.startOgSg != null
-          ? invertBrixToSg(ctx.startOgSg)
-          : null
-
-    const isAfterStart = input.measuredAtUtc > ctx.batchStartDateUtc
-    const fermenting = bi != null && isAfterStart
-
-    if (fermenting) {
-      const formula = ctx.correctionFormula
-      const sg =
-        formula === 'linear'
-          ? linearCorrection(bi as number, correctedBrix)
-          : terrillCorrection(bi as number, correctedBrix)
-      corrections.push({
-        type: 'fermentation-correction',
-        input: correctedBrix,
-        output: sg,
-        note: `${formula === 'linear' ? 'Линейная (Баллинг RE)' : 'Формула Террилла'}: Bi=${(bi as number).toFixed(2)} °Bx, Bf=${correctedBrix.toFixed(2)} °Bx`
-      })
-      return { correctedSg: sg, correctedBrix, corrections, warnings }
     }
 
     const sg = brixToSg(correctedBrix)

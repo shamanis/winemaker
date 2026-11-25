@@ -21,7 +21,7 @@ function buildContext(batch: BatchDto, instrumentId: string | null): PipelineCon
   const formula = useSettingsStore.getState().settings?.correctionFormula ?? 'terrill'
   const instrument = instruments.find((i) => i.id === instrumentId)
   const startParams = batch.startParams as {
-    gravity: { correctedBrix?: number | null; ogSg: number }
+    gravity: { raw: { value: number; unit: 'sg' | 'brix' }; ogSg: number }
   }
   return {
     instrument: instrument
@@ -34,7 +34,7 @@ function buildContext(batch: BatchDto, instrumentId: string | null): PipelineCon
         }
       : null,
     correctionFormula: formula,
-    startCorrectedBrix: startParams.gravity.correctedBrix ?? null,
+    startRawGravity: startParams.gravity.raw,
     startOgSg: startParams.gravity.ogSg,
     batchStartDateUtc: batch.startDateUtc
   }

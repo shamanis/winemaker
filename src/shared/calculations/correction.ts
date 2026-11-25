@@ -74,10 +74,11 @@ export function terrillCorrection(biBrix: number, bfBrix: number): number {
 
 /**
  * Упрощённая линейная коррекция — соотношение Баллинга:
- * RE = 0.1808·Bi + 0.8192·Bf (°Plato), затем Plato → SG сахарной формулой.
+ * RE = 0.1808·OE + 0.8192·AE (°Plato), затем Plato → SG сахарной формулой.
+ * OE — истинный экстракт старта, AE — кажущийся экстракт текущего сусла.
  */
-export function linearCorrection(biBrix: number, bfBrix: number): number {
-  const re = 0.1808 * biBrix + 0.8192 * bfBrix
+export function linearCorrection(oePlato: number, aePlato: number): number {
+  const re = 0.1808 * oePlato + 0.8192 * aePlato
   return brixToSg(re)
 }
 

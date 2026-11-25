@@ -24,7 +24,11 @@ export function createResolveContextProvider(deps: {
     const stored = deps.appState.get<unknown>(SETTINGS_KEY)
     const settings = settingsSchema.safeParse(stored)
     const startParams = batch.batch.startParams as {
-      gravity: { correctedBrix?: number | null; ogSg: number }
+      gravity: {
+        raw: { value: number; unit: 'sg' | 'brix' }
+        correctedBrix?: number | null
+        ogSg: number
+      }
     }
     const ctx: PipelineContext = {
       instrument: instrument
@@ -37,7 +41,7 @@ export function createResolveContextProvider(deps: {
           }
         : null,
       correctionFormula: settings.success ? settings.data.correctionFormula : 'terrill',
-      startCorrectedBrix: startParams.gravity.correctedBrix ?? null,
+      startRawGravity: startParams.gravity.raw,
       startOgSg: startParams.gravity.ogSg,
       batchStartDateUtc: batch.batch.startDateUtc
     }

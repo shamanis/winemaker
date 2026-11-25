@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { resolveMeasurement } from '../src/shared/calculations/pipeline'
+import { invertBrixToSg } from '../src/shared/calculations/correction'
 import { brixToSg } from '../src/shared/calculations/density'
 
 const BASE_CTX = {
   correctionFormula: 'terrill' as const,
-  startCorrectedBrix: 22.88,
+  startRawGravity: { value: 22, unit: 'brix' as const },
+  startOgSg: 1.0919540,
   batchStartDateUtc: '2026-11-25T10:00:00.000Z'
 }
 
@@ -61,36 +63,38 @@ describe('resolveMeasurement — пайплайн коррекции', () => {
     expect(r.warnings[0]).toContain('вне зоны аппроксимации')
   })
 
-  it('рефрактометр на бродящем суле: Террилл по Bi из партии + предупреждение без пары', () => {
+  it('рефрактометр на бродящем суле: Террилл на СЫРЫХ показаниях + предупреждение без пары', () => {
     const r = resolveMeasurement(
-      { kind: 'density', rawValue: 10, unit: 'brix', tempC: null, measuredAtUtc: '2026-11-26T11:00:00.000Z' },
+      { kind: 'density', rawValue: 14, unit: 'brix', tempC: null, measuredAtUtc: '2026-11-26T11:00:00.000Z' },
       {
         ...BASE_CTX,
         instrument: { type: 'refractometer-atc', wcf: 1.04, calibrationOffsetSg: null, hasCalibrationPair: false }
       }
     )
-    // WCF: 10 × 1.04 = 10.4 corrected Brix
-    expect(r.correctedBrix).toBeCloseTo(10.4, 8)
+    // WCF к текущему показанию НЕ применяется (регрессия Террилла на сырых)
+    expect(r.correctedBrix).toBeNull()
     expect(r.warnings).toHaveLength(1)
-    expect(r.warnings[0]).toContain('усреднённому коэффициенту')
+    expect(r.warnings[0]).toContain('усреднённой формуле')
     const types = r.corrections.map((c) => c.type)
-    expect(types).toEqual(['wcf', 'fermentation-correction'])
-    // Bf=10.4, Bi=22.88 → Террилл
+    expect(types).toEqual(['fermentation-correction'])
+    // Bi=22, Bf=14 сырые → пользовательский контрольный пример ≈ 11.5 °Bx / 1.0462 SG
     const expected =
       1 -
-      0.0044993 * 22.88 +
-      0.011774 * 10.4 +
-      0.00027581 * 22.88 ** 2 -
-      0.0012717 * 10.4 ** 2 -
-      0.00000728 * 22.88 ** 3 +
-      0.000063293 * 10.4 ** 3
+      0.0044993 * 22 +
+      0.011774 * 14 +
+      0.00027581 * 22 ** 2 -
+      0.0012717 * 14 ** 2 -
+      0.00000728 * 22 ** 3 +
+      0.000063293 * 14 ** 3
     expect(r.correctedSg).toBeCloseTo(expected, 10)
+    expect(r.correctedSg).toBeGreaterThan(1.045)
+    expect(r.correctedSg).toBeLessThan(1.047)
   })
 
-  it('линейная формула из настроек даёт другой SG, чем Террилл', () => {
+  it('линейная формула: OE из истинного OG, AE из сырого показания', () => {
     const input = {
       kind: 'density' as const,
-      rawValue: 10,
+      rawValue: 14,
       unit: 'brix' as const,
       tempC: null,
       measuredAtUtc: '2026-11-26T11:00:00.000Z'
@@ -99,8 +103,10 @@ describe('resolveMeasurement — пайплайн коррекции', () => {
     const terrill = resolveMeasurement(input, { ...BASE_CTX, instrument, correctionFormula: 'terrill' })
     const linear = resolveMeasurement(input, { ...BASE_CTX, instrument, correctionFormula: 'linear' })
     expect(linear.correctedSg).not.toBeCloseTo(terrill.correctedSg as number, 4)
-    // Баллинг: RE = 0.1808×22.88 + 0.8192×10.4
-    const re = 0.1808 * 22.88 + 0.8192 * 10.4
+    // Баллинг: OE = invert(1.0919540), AE = invert(brixToSg(14))
+    const oe = invertBrixToSg(1.0919540)
+    const ae = invertBrixToSg(brixToSg(14))
+    const re = 0.1808 * oe + 0.8192 * ae
     expect(linear.correctedSg).toBeCloseTo(
       1 + re / (258.6 - (re / 258.2) * 227.1),
       10
@@ -115,12 +121,12 @@ describe('resolveMeasurement — пайплайн коррекции', () => {
     expect(r.corrections.map((c) => c.type)).toEqual(['wcf', 'brix-to-sg'])
   })
 
-  it('Bi вычисляется инверсией, если старт партии был в SG', () => {
+  it('Bi из сырого показания старта; старт в SG — Bi инверсией из OG', () => {
     const r = resolveMeasurement(
       { kind: 'density', rawValue: 10, unit: 'brix', tempC: null, measuredAtUtc: '2026-11-26T11:00:00.000Z' },
       {
         correctionFormula: 'terrill',
-        startCorrectedBrix: null,
+        startRawGravity: { value: 1.0922, unit: 'sg' },
         startOgSg: 1.0922,
         batchStartDateUtc: '2026-11-25T10:00:00.000Z',
         instrument: { type: 'refractometer-atc', wcf: 1, calibrationOffsetSg: null, hasCalibrationPair: true }
@@ -128,8 +134,9 @@ describe('resolveMeasurement — пайплайн коррекции', () => {
     )
     const note = r.corrections.find((c) => c.type === 'fermentation-correction')?.note ?? ''
     expect(note).toContain('Bi=')
-    expect(r.correctedSg).toBeGreaterThan(0.99)
-    expect(r.correctedSg).toBeLessThan(1.02)
+    // Террилл(Bi=21.97 инверсией, Bf=10) — разумный FG
+    expect(r.correctedSg).toBeGreaterThan(1.0)
+    expect(r.correctedSg).toBeLessThan(1.03)
   })
 
   it('плотность без прибора — ошибка (глубокая защита за zod)', () => {
