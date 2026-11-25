@@ -1,54 +1,71 @@
 import { describe, expect, it } from 'vitest'
 import {
-  appHealthChannel,
-  appStateGetChannel,
-  appStateSetChannel,
-  ipcEnvelopeSchema,
-  utilityEchoChannel
+  batchCreateSchema,
+  channels,
+  gravityRawSchema,
+  instrumentInputSchema,
+  settingsSchema,
+  strainInputSchema
 } from '../src/shared/ipc/contracts'
 
-describe('zod-схемы IPC-каналов', () => {
-  it('app:health принимает корректный ответ и отклоняет мусор', () => {
-    const ok = appHealthChannel.response.safeParse({
-      pong: true,
-      appVersion: '0.1.0',
-      utilityEcho: 'ping',
-      time: '2026-01-01T00:00:00.000Z'
+describe('zod-схемы доменов (add-catalogs-and-batches)', () => {
+  it('прибор: валидный ввод принимается, пустое имя и неизвестный тип — нет', () => {
+    const ok = instrumentInputSchema.safeParse({
+      name: 'Рефрактометр РПЛ-3',
+      type: 'refractometer-atc',
+      wcf: 1.04,
+      calibrationOffsetSg: null
     })
     expect(ok.success).toBe(true)
 
-    const bad = appHealthChannel.response.safeParse({ pong: 'yes' })
+    expect(instrumentInputSchema.safeParse({ name: '', type: 'hydrometer' }).success).toBe(false)
+    expect(instrumentInputSchema.safeParse({ name: 'X', type: 'microscope' }).success).toBe(false)
+  })
+
+  it('штамм: nullable-поля опциональны', () => {
+    const ok = strainInputSchema.safeParse({ name: 'EC-1118', producer: 'Lallemand' })
+    expect(ok.success).toBe(true)
+    expect(strainInputSchema.safeParse({ name: '' }).success).toBe(false)
+  })
+
+  it('плотность старта: физические диапазоны (Brix 0–80, SG 0.9–1.2)', () => {
+    expect(gravityRawSchema.safeParse({ value: 22, unit: 'brix' }).success).toBe(true)
+    expect(gravityRawSchema.safeParse({ value: 120, unit: 'brix' }).success).toBe(false)
+    expect(gravityRawSchema.safeParse({ value: 1.09, unit: 'sg' }).success).toBe(true)
+    expect(gravityRawSchema.safeParse({ value: 0.5, unit: 'sg' }).success).toBe(false)
+  })
+
+  it('создание партии: без дрожжей/добавок допустимо, без сырья — нет', () => {
+    const ok = batchCreateSchema.safeParse({
+      title: 'Изабелла',
+      rawMaterial: 'Виноград',
+      startDateUtc: '2026-11-25T10:00:00.000Z',
+      startParams: { gravity: { raw: { value: 22, unit: 'brix' } } },
+      yeast: [],
+      additions: []
+    })
+    expect(ok.success).toBe(true)
+
+    const bad = batchCreateSchema.safeParse({
+      title: '',
+      rawMaterial: 'Виноград',
+      startDateUtc: '2026-11-25T10:00:00.000Z',
+      startParams: { gravity: { raw: { value: 22, unit: 'brix' } } },
+      yeast: [],
+      additions: []
+    })
     expect(bad.success).toBe(false)
   })
 
-  it('app-state:get требует непустой ключ', () => {
-    expect(appStateGetChannel.request.safeParse({ key: 'theme' }).success).toBe(true)
-    expect(appStateGetChannel.request.safeParse({ key: '' }).success).toBe(false)
-    expect(appStateGetChannel.request.safeParse({}).success).toBe(false)
+  it('смена статуса: только валидные значения enum', () => {
+    const channel = channels.batchesUpdateStatus
+    expect(channel.request.safeParse({ id: 'x', to: 'aging' }).success).toBe(true)
+    expect(channel.request.safeParse({ id: 'x', to: 'drinking' }).success).toBe(false)
   })
 
-  it('app-state:set принимает произвольное значение', () => {
-    expect(
-      appStateSetChannel.request.safeParse({ key: 'theme', value: 'dark' }).success
-    ).toBe(true)
-    expect(
-      appStateSetChannel.request.safeParse({ key: 'bounds', value: { w: 4 } }).success
-    ).toBe(true)
-  })
-
-  it('utility:echo проверяет сообщение', () => {
-    expect(utilityEchoChannel.request.safeParse({ message: 'ping' }).success).toBe(true)
-    expect(utilityEchoChannel.request.safeParse({ message: 42 }).success).toBe(false)
-  })
-
-  it('конверт результата различается по ok', () => {
-    expect(ipcEnvelopeSchema.parse({ ok: true, data: 1 })).toEqual({
-      ok: true,
-      data: 1
-    })
-    expect(
-      ipcEnvelopeSchema.parse({ ok: false, error: { code: 'X', message: 'y' } }).ok
-    ).toBe(false)
-    expect(ipcEnvelopeSchema.safeParse({ ok: true }).success).toBe(false)
+  it('настройки: только SG/Brix и Террилл/линейная', () => {
+    expect(settingsSchema.safeParse({ densityUnit: 'sg', correctionFormula: 'terrill' }).success).toBe(true)
+    expect(settingsSchema.safeParse({ densityUnit: 'plato', correctionFormula: 'terrill' }).success).toBe(false)
+    expect(settingsSchema.safeParse({ densityUnit: 'brix', correctionFormula: 'magic' }).success).toBe(false)
   })
 })

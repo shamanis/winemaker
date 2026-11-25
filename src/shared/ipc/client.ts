@@ -1,9 +1,18 @@
 import {
   channels,
   ipcEnvelopeSchema,
+  type AppSettings,
+  type BatchCreateInput,
+  type BatchFullDto,
+  type BatchStatus,
   type ChannelKey,
   type ChannelRequest,
-  type ChannelResponse
+  type ChannelResponse,
+  type FinalResultDto,
+  type InstrumentDto,
+  type InstrumentInput,
+  type StrainDto,
+  type StrainInput
 } from './contracts'
 import {
   eventContracts,
@@ -41,6 +50,29 @@ function onEvent<E extends EventName>(
   })
 }
 
+function crudClient<In extends object, Dto>(
+  transport: WinemakerTransport,
+  keys: { list: ChannelKey; create: ChannelKey; update: ChannelKey; remove: ChannelKey }
+) {
+  return {
+    list: async (): Promise<Dto[]> => {
+      const r = await invokeChannel(transport, keys.list, {} as never)
+      return (r as { items: Dto[] }).items
+    },
+    create: async (input: In): Promise<Dto> => {
+      const r = await invokeChannel(transport, keys.create, input as never)
+      return (r as { item: Dto }).item
+    },
+    update: async (id: string, patch: Partial<In>): Promise<Dto | null> => {
+      const r = await invokeChannel(transport, keys.update, { id, patch } as never)
+      return (r as { item: Dto | null }).item
+    },
+    remove: async (id: string): Promise<void> => {
+      await invokeChannel(transport, keys.remove, { id } as never)
+    }
+  }
+}
+
 /** Поверхность API для renderer'а. */
 export function createApiClient(transport: WinemakerTransport) {
   return {
@@ -52,6 +84,56 @@ export function createApiClient(transport: WinemakerTransport) {
     },
     utilityEcho: async (message: string): Promise<string> =>
       (await invokeChannel(transport, 'utilityEcho', { message })).echoed,
+
+    instruments: crudClient<InstrumentInput, InstrumentDto>(transport, {
+      list: 'instrumentsList',
+      create: 'instrumentsCreate',
+      update: 'instrumentsUpdate',
+      remove: 'instrumentsDelete'
+    }),
+
+    strains: crudClient<StrainInput, StrainDto>(transport, {
+      list: 'strainsList',
+      create: 'strainsCreate',
+      update: 'strainsUpdate',
+      remove: 'strainsDelete'
+    }),
+
+    batches: {
+      list: async (): Promise<ChannelResponse<'batchesList'>['items']> =>
+        (await invokeChannel(transport, 'batchesList', {})).items,
+      listArchived: async (): Promise<ChannelResponse<'batchesListArchived'>['items']> =>
+        (await invokeChannel(transport, 'batchesListArchived', {})).items,
+      create: async (input: BatchCreateInput): Promise<{ full: BatchFullDto }> =>
+        invokeChannel(transport, 'batchesCreate', input),
+      get: async (id: string): Promise<BatchFullDto | null> =>
+        (await invokeChannel(transport, 'batchesGet', { id })).full,
+      update: async (
+        id: string,
+        patch: Partial<Pick<BatchCreateInput, 'title' | 'rawMaterial' | 'style' | 'volumeLiters'>>
+      ): Promise<BatchFullDto | null> =>
+        (await invokeChannel(transport, 'batchesUpdate', { id, patch })).full,
+      updateStatus: async (
+        id: string,
+        to: BatchStatus,
+        atUtc?: string
+      ): Promise<BatchFullDto | null> =>
+        (await invokeChannel(transport, 'batchesUpdateStatus', { id, to, atUtc })).full,
+      archive: async (id: string, finalResult: FinalResultDto): Promise<BatchFullDto | null> =>
+        (await invokeChannel(transport, 'batchesArchive', { id, finalResult })).full,
+      remove: async (id: string): Promise<void> => {
+        await invokeChannel(transport, 'batchesDelete', { id })
+      }
+    },
+
+    settings: {
+      get: async (): Promise<AppSettings> =>
+        (await invokeChannel(transport, 'settingsGet', {})).settings,
+      set: async (settings: AppSettings): Promise<void> => {
+        await invokeChannel(transport, 'settingsSet', { settings })
+      }
+    },
+
     backupCompleted: (cb: EventListener<'backup:completed'>): (() => void) =>
       onEvent(transport, 'backup:completed', cb)
   }

@@ -5,6 +5,8 @@ import { createDatabase, type DatabaseHandle } from './db/database'
 import { applyMigrations } from './db/migrate'
 import { BackupScheduler, backupNow, rotateBackups } from './db/backup'
 import { AppStateRepository } from './app-state/repository'
+import { InstrumentRepository, YeastStrainRepository } from './catalogs/repositories'
+import { BatchRepository } from './batches/repository'
 import { registerIpcHandlers } from './ipc/register'
 import {
   spawnUtilityUtility,
@@ -81,11 +83,19 @@ async function main(): Promise<void> {
 
   repo = new AppStateRepository(dbHandle.db, () => scheduler?.markDirty())
 
+  const markDirty = (): void => scheduler?.markDirty()
+  const instruments = new InstrumentRepository(dbHandle.db, markDirty)
+  const strains = new YeastStrainRepository(dbHandle.db, markDirty)
+  const batches = new BatchRepository(dbHandle.db, markDirty)
+
   utility = spawnUtilityUtility(utilityModulePath())
 
   registerIpcHandlers({
     appVersion: app.getVersion(),
     appState: repo,
+    instruments,
+    strains,
+    batches,
     utility: utility.rpc
   })
 

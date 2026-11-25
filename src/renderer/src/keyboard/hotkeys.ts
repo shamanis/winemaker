@@ -4,7 +4,13 @@
  */
 export const HOTKEYS = {
   /** Переключение светлой/тёмной темы. */
-  toggleTheme: 'Mod+Shift+L'
+  toggleTheme: 'Mod+Shift+L',
+  /** Экран партий. */
+  batches: 'Mod+1',
+  /** Экран справочников. */
+  catalogs: 'Mod+2',
+  /** Экран настроек. */
+  settings: 'Mod+3'
 } as const
 
 export type HotkeyAction = keyof typeof HOTKEYS

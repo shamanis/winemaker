@@ -1,18 +1,29 @@
 import { ipcMain } from 'electron'
 import {
   channels,
+  settingsSchema,
   type ChannelDefinition,
   type IpcEnvelope
 } from '../../shared/ipc/contracts'
 import type { AppStateRepository } from '../app-state/repository'
+import type { InstrumentRepository, YeastStrainRepository } from '../catalogs/repositories'
+import type { BatchFull, BatchRepository } from '../batches/repository'
+import type { InstrumentRow } from '../db/schema'
+import type { YeastStrainRow } from '../db/schema'
 import type { UtilityRpc } from '../utility/spawn'
 import { nowUtcIso } from '../../shared/time/utc'
 
 export interface IpcContext {
   appVersion: string
   appState: AppStateRepository
+  instruments: InstrumentRepository
+  strains: YeastStrainRepository
+  batches: BatchRepository
   utility: UtilityRpc
 }
+
+const SETTINGS_KEY = 'settings'
+const DEFAULT_SETTINGS = { densityUnit: 'sg', correctionFormula: 'terrill' } as const
 
 /**
  * Регистрирует все IPC-хендлеры с валидацией на границе (design.md D3):
@@ -91,4 +102,91 @@ export function registerIpcHandlers(ctx: IpcContext): void {
     const echo = await ctx.utility.echo(message)
     return { echoed: echo.echoed }
   })
+
+  /* Справочник приборов */
+  handleChannel<{}, { items: ReturnType<InstrumentRepository['list']> }>(
+    channels.instrumentsList,
+    () => ({ items: ctx.instruments.list() })
+  )
+  handleChannel<Parameters<InstrumentRepository['create']>[0], { item: ReturnType<InstrumentRepository['create']> }>(
+    channels.instrumentsCreate,
+    (input) => ({ item: ctx.instruments.create(input) })
+  )
+  handleChannel<{ id: string; patch: Partial<Parameters<InstrumentRepository['update']>[1]> }, { item: InstrumentRow | null }>(
+    channels.instrumentsUpdate,
+    ({ id, patch }) => ({ item: ctx.instruments.update(id, patch) ?? null })
+  )
+  handleChannel<{ id: string }, { ok: boolean }>(channels.instrumentsDelete, ({ id }) => {
+    ctx.instruments.delete(id)
+    return { ok: true }
+  })
+
+  /* Справочник штаммов */
+  handleChannel<{}, { items: ReturnType<YeastStrainRepository['list']> }>(
+    channels.strainsList,
+    () => ({ items: ctx.strains.list() })
+  )
+  handleChannel<Parameters<YeastStrainRepository['create']>[0], { item: ReturnType<YeastStrainRepository['create']> }>(
+    channels.strainsCreate,
+    (input) => ({ item: ctx.strains.create(input) })
+  )
+  handleChannel<{ id: string; patch: Partial<Parameters<YeastStrainRepository['update']>[1]> }, { item: YeastStrainRow | null }>(
+    channels.strainsUpdate,
+    ({ id, patch }) => ({ item: ctx.strains.update(id, patch) ?? null })
+  )
+  handleChannel<{ id: string }, { ok: boolean }>(channels.strainsDelete, ({ id }) => {
+    ctx.strains.delete(id)
+    return { ok: true }
+  })
+
+  /* Партии */
+  handleChannel<{}, { items: ReturnType<BatchRepository['listActive']> }>(
+    channels.batchesList,
+    () => ({ items: ctx.batches.listActive() })
+  )
+  handleChannel<{}, { items: ReturnType<BatchRepository['listArchived']> }>(
+    channels.batchesListArchived,
+    () => ({ items: ctx.batches.listArchived() })
+  )
+  handleChannel<Parameters<BatchRepository['create']>[0], { full: ReturnType<BatchRepository['create']> }>(
+    channels.batchesCreate,
+    (input) => ({ full: ctx.batches.create(input) })
+  )
+  handleChannel<{ id: string }, { full: BatchFull | null }>(
+    channels.batchesGet,
+    ({ id }) => ({ full: ctx.batches.get(id) ?? null })
+  )
+  handleChannel<{ id: string; patch: Parameters<BatchRepository['update']>[1] }, { full: BatchFull | null }>(
+    channels.batchesUpdate,
+    ({ id, patch }) => ({ full: ctx.batches.update(id, patch) ?? null })
+  )
+  handleChannel<{ id: string; to: Parameters<BatchRepository['changeStatus']>[1]; atUtc?: string }, { full: BatchFull | null }>(
+    channels.batchesUpdateStatus,
+    ({ id, to, atUtc }) => ({ full: ctx.batches.changeStatus(id, to, atUtc) ?? null })
+  )
+  handleChannel<{ id: string; finalResult: Parameters<BatchRepository['archive']>[1] }, { full: BatchFull | null }>(
+    channels.batchesArchive,
+    ({ id, finalResult }) => ({ full: ctx.batches.archive(id, finalResult) ?? null })
+  )
+  handleChannel<{ id: string }, { ok: boolean }>(channels.batchesDelete, ({ id }) => {
+    ctx.batches.delete(id)
+    return { ok: true }
+  })
+
+  /* Настройки: один ключ JSON в app_state (design D4) */
+  handleChannel<{}, { settings: typeof DEFAULT_SETTINGS | Record<string, unknown> }>(
+    channels.settingsGet,
+    () => {
+      const stored = ctx.appState.get<unknown>(SETTINGS_KEY)
+      const settings = settingsSchema.safeParse(stored)
+      return { settings: settings.success ? settings.data : { ...DEFAULT_SETTINGS } }
+    }
+  )
+  handleChannel<{ settings: unknown }, { ok: boolean }>(
+    channels.settingsSet,
+    ({ settings }) => {
+      ctx.appState.set(SETTINGS_KEY, settings)
+      return { ok: true }
+    }
+  )
 }
