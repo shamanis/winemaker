@@ -50,10 +50,9 @@ body {
   overflow-y: auto;
 }
 
+/* Рабочая область — на всю ширину окна; узкие формы ограничивают себя сами. */
 .app-main > * {
   width: 100%;
-  max-width: 62rem;
-  margin: 0 auto;
 }
 
 .app-footer {
@@ -162,7 +161,6 @@ body {
 /* Экраны и списки */
 .screen {
   width: 100%;
-  max-width: 56rem;
 }
 
 .screen-header {
