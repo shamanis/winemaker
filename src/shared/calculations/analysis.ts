@@ -113,11 +113,13 @@ export function formatAbv(abv: number | null | undefined): string {
 }
 
 /**
- * Плотность в рабочих единицах; при Brix — обе единицы рядом (6.3.1).
+ * Плотность — ОБЕ единицы рядом всегда (правило интерфейса: SG нужен
+ * формулам, Brix нагляднее людям). Рабочая единица из настроек — первой,
+ * вторая — в скобках.
  */
 export function formatDensity(sg: number | null | undefined, unit: 'sg' | 'brix'): string {
   if (sg == null || !Number.isFinite(sg)) return '—'
-  if (unit === 'sg') return `${sg.toFixed(4)} SG`
-  const brix = invertBrixToSg(sg)
-  return `${brix.toFixed(1)} °Bx (${sg.toFixed(4)} SG)`
+  const sgPart = `${sg.toFixed(4)} SG`
+  const brixPart = `${invertBrixToSg(sg).toFixed(1)} °Bx`
+  return unit === 'brix' ? `${brixPart} (${sgPart})` : `${sgPart} (${brixPart})`
 }

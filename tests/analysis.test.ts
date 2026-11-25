@@ -8,6 +8,7 @@ import {
   residualSugar
 } from '../src/shared/calculations/analysis'
 import { brixToSg } from '../src/shared/calculations/density'
+import { invertBrixToSg } from '../src/shared/calculations/correction'
 
 describe('hallAbv (формула Hall из vision)', () => {
   it('контрольный пример OG=1.092, FG=0.998', () => {
@@ -94,12 +95,16 @@ describe('форматтеры (6.3.1, 6.3.2)', () => {
     expect(formatAbv(null)).toBe('—')
   })
 
-  it('плотность в Brix показывает обе единицы', () => {
+  it('плотность показывает ОБЕ единицы при любом значении настроек', () => {
     const sg = brixToSg(22)
-    const text = formatDensity(sg, 'brix')
-    expect(text).toContain('°Bx')
-    expect(text).toContain('SG')
-    expect(formatDensity(1.0959, 'sg')).toBe('1.0959 SG')
+    const asBrix = formatDensity(sg, 'brix')
+    expect(asBrix).toContain('°Bx')
+    expect(asBrix).toContain('SG')
+    // рабочая единица первой, вторая в скобках
+    expect(asBrix.startsWith(`${invertBrixToSg(sg).toFixed(1)} °Bx (`)).toBe(true)
+
+    const asSg = formatDensity(1.0959, 'sg')
+    expect(asSg).toBe('1.0959 SG (11.5 °Bx)')
     expect(formatDensity(null, 'sg')).toBe('—')
   })
 })
