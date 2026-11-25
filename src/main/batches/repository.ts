@@ -257,6 +257,56 @@ export class BatchRepository {
     return updated ? this.get(id) : undefined
   }
 
+  /**
+   * Заменяет состав дрожжей партии целиком (design fix: редактирование
+   * после создания). Один вызов = одна транзакция.
+   */
+  setYeast(batchId: string, rows: BatchYeastInput[]): BatchFull | undefined {
+    const batch = this.db.select().from(batches).where(eq(batches.id, batchId)).get()
+    if (!batch) return undefined
+    this.db.transaction((tx) => {
+      tx.delete(batchYeast).where(eq(batchYeast.batchId, batchId)).run()
+      for (const yeast of rows) {
+        tx.insert(batchYeast).values({
+          id: randomUUID(),
+          batchId,
+          strainId: yeast.strainId ?? null,
+          strainName: yeast.strainName,
+          producer: yeast.producer ?? null,
+          doseAmount: yeast.doseAmount,
+          doseUnit: yeast.doseUnit,
+          addedAtUtc: yeast.addedAtUtc,
+          productionDateUtc: yeast.productionDateUtc ?? null
+        }).run()
+      }
+    })
+    this.markDirty()
+    return this.get(batchId)
+  }
+
+  /** Заменяет состав стартовых добавок партии целиком. */
+  setAdditions(batchId: string, rows: BatchAdditionInput[]): BatchFull | undefined {
+    const batch = this.db.select().from(batches).where(eq(batches.id, batchId)).get()
+    if (!batch) return undefined
+    this.db.transaction((tx) => {
+      tx.delete(batchAdditions).where(eq(batchAdditions.batchId, batchId)).run()
+      for (const addition of rows) {
+        tx.insert(batchAdditions).values({
+          id: randomUUID(),
+          batchId,
+          name: addition.name,
+          kind: addition.kind,
+          doseAmount: addition.doseAmount,
+          doseUnit: addition.doseUnit,
+          addedAtUtc: addition.addedAtUtc,
+          notes: addition.notes ?? null
+        }).run()
+      }
+    })
+    this.markDirty()
+    return this.get(batchId)
+  }
+
   delete(id: string): void {
     this.db.delete(batches).where(eq(batches.id, id)).run()
     this.markDirty()

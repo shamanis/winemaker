@@ -19,6 +19,15 @@ import {
 import { emitEvent } from './events/emit'
 import { nowUtcIso } from '../shared/time/utc'
 
+// Изолированный профиль для dev-тестов: WINEMAKER_DATA_DIR=/tmp/... —
+// ставится ДО requestSingleInstanceLock (лок привязан к userData), чтобы
+// тестовый экземпляр работал параллельно с экземпляром пользователя
+// и не смешивал данные.
+const dataDirOverride = process.env.WINEMAKER_DATA_DIR
+if (dataDirOverride) {
+  app.setPath('userData', dataDirOverride)
+}
+
 let mainWindow: BrowserWindow | null = null
 let dbHandle: DatabaseHandle | null = null
 let scheduler: BackupScheduler | null = null

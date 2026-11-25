@@ -15,6 +15,8 @@ interface BatchesStoreState {
   changeStatus(id: string, to: BatchStatus): Promise<void>
   archive(id: string, finalResult: FinalResultDto): Promise<void>
   remove(id: string): Promise<void>
+  setYeast(batchId: string, yeast: Parameters<typeof api.setYeast>[1]): Promise<void>
+  setAdditions(batchId: string, additions: Parameters<typeof api.setAdditions>[1]): Promise<void>
 }
 
 export const useBatchesStore = create<BatchesStoreState>((set, get) => ({
@@ -67,6 +69,16 @@ export const useBatchesStore = create<BatchesStoreState>((set, get) => ({
     await api.batches.remove(id)
     if (get().selected?.batch.id === id) set({ selected: null })
     await get().init()
+  },
+
+  async setYeast(batchId, yeast) {
+    const full = await api.setYeast(batchId, yeast)
+    if (get().selected?.batch.id === batchId && full) set({ selected: full })
+  },
+
+  async setAdditions(batchId, additions) {
+    const full = await api.setAdditions(batchId, additions)
+    if (get().selected?.batch.id === batchId && full) set({ selected: full })
   }
 }))
 

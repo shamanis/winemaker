@@ -9,6 +9,7 @@ import {
   type ChannelRequest,
   type ChannelResponse,
   type FinalResultDto,
+  type AdditionInput,
   type InstrumentDto,
   type InstrumentInput,
   type MeasurementCreateInput,
@@ -18,7 +19,8 @@ import {
   type OperationDto,
   type OperationInput,
   type StrainDto,
-  type StrainInput
+  type StrainInput,
+  type YeastInput
 } from './contracts'
 import {
   eventContracts,
@@ -179,6 +181,11 @@ export function createApiClient(transport: WinemakerTransport) {
 
     exportBatch: async (id: string): Promise<string | null> =>
       (await invokeChannel(transport, 'batchesExport', { id })).path,
+
+    setYeast: async (batchId: string, yeast: YeastInput[]): Promise<BatchFullDto | null> =>
+      (await invokeChannel(transport, 'batchesSetYeast', { batchId, yeast })).full,
+    setAdditions: async (batchId: string, additions: AdditionInput[]): Promise<BatchFullDto | null> =>
+      (await invokeChannel(transport, 'batchesSetAdditions', { batchId, additions })).full,
 
     backupCompleted: (cb: EventListener<'backup:completed'>): (() => void) =>
       onEvent(transport, 'backup:completed', cb)

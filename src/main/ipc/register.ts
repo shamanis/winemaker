@@ -180,6 +180,18 @@ export function registerIpcHandlers(ctx: IpcContext): void {
     channels.batchesArchive,
     ({ id, finalResult }) => ({ full: ctx.batches.archive(id, finalResult) ?? null })
   )
+  handleChannel<
+    { batchId: string; yeast: Parameters<BatchRepository['setYeast']>[1] },
+    { full: BatchFull | null }
+  >(channels.batchesSetYeast, ({ batchId, yeast }) => ({
+    full: ctx.batches.setYeast(batchId, yeast) ?? null
+  }))
+  handleChannel<
+    { batchId: string; additions: Parameters<BatchRepository['setAdditions']>[1] },
+    { full: BatchFull | null }
+  >(channels.batchesSetAdditions, ({ batchId, additions }) => ({
+    full: ctx.batches.setAdditions(batchId, additions) ?? null
+  }))
   handleChannel<{ id: string }, { ok: boolean }>(channels.batchesDelete, ({ id }) => {
     ctx.batches.delete(id)
     return { ok: true }

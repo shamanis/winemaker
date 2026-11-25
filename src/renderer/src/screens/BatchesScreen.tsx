@@ -14,6 +14,22 @@ import { useBatchesStore, STATUS_LABELS, daysFromStart } from '../store/batches-
 import { useCatalogsStore, INSTRUMENT_TYPE_LABELS } from '../store/catalogs-store'
 import { useSettingsStore } from '../store/settings-store'
 import { useMeasurementsStore, lastDensityMeasurement } from '../store/measurements-store'
+import {
+  YeastRowsEditor,
+  AdditionRowsEditor,
+  yeastRowsToInput,
+  additionRowsToInput,
+  validateYeastRows,
+  validateAdditionRows,
+  emptyYeastRow,
+  emptyAdditionRow,
+  yeastFromDto,
+  additionsFromDto,
+  doseUnitLabel,
+  CompositionDialog,
+  type YeastRow,
+  type AdditionRow
+} from '../ui/composition'
 import { api } from '../api'
 import {
   MeasurementsSection,
@@ -170,6 +186,7 @@ function BatchListDensity(props: { batch: BatchDto }): ReactElement {
 function BatchCreateForm(props: { onDone(): void; onCancel(): void }): ReactElement {
   const { onDone, onCancel } = props
   const instruments = useCatalogsStore((s) => s.instruments)
+  const strains = useCatalogsStore((s) => s.strains)
   const settings = useSettingsStore((s) => s.settings)
   const initCatalogs = useCatalogsStore((s) => s.init)
   const initSettings = useSettingsStore((s) => s.init)
@@ -178,6 +195,8 @@ function BatchCreateForm(props: { onDone(): void; onCancel(): void }): ReactElem
   const [unit, setUnit] = useState<'sg' | 'brix'>(settings?.densityUnit ?? 'sg')
   const [gravityValue, setGravityValue] = useState('')
   const [instrumentId, setInstrumentId] = useState<string>('')
+  const [yeastRows, setYeastRows] = useState<YeastRow[]>([emptyYeastRow()])
+  const [additionRows, setAdditionRows] = useState<AdditionRow[]>([])
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
@@ -213,6 +232,10 @@ function BatchCreateForm(props: { onDone(): void; onCancel(): void }): ReactElem
       setError('Укажите начальную плотность')
       return
     }
+    const yeastError = validateYeastRows(yeastRows)
+    if (yeastError) { setError(yeastError); return }
+    const additionsError = validateAdditionRows(additionRows)
+    if (additionsError) { setError(additionsError); return }
     setSubmitting(true)
     try {
       const num = (key: string): number | null => {
@@ -231,8 +254,8 @@ function BatchCreateForm(props: { onDone(): void; onCancel(): void }): ReactElem
           ph: num('ph'),
           tempC: num('tempC')
         },
-        yeast: [],
-        additions: []
+        yeast: yeastRowsToInput(yeastRows),
+        additions: additionRowsToInput(additionRows)
       })
       onDone()
     } catch (e) {
@@ -329,6 +352,12 @@ function BatchCreateForm(props: { onDone(): void; onCancel(): void }): ReactElem
           </label>
         </div>
 
+        <h3><Term id="ferment">Дрожжи</Term></h3>
+        <YeastRowsEditor rows={yeastRows} onChange={setYeastRows} strains={strains} />
+
+        <h3>Стартовые добавки</h3>
+        <AdditionRowsEditor rows={additionRows} onChange={setAdditionRows} />
+
         {error ? <p className="error-text">{error}</p> : null}
         <div className="form-actions">
           <button type="submit" disabled={submitting}>
@@ -358,6 +387,15 @@ function BatchCard(props: { full: BatchFullDto; onBack(): void; onDelete(): void
   const [tab, setTab] = useState<BatchTab>('overview')
   const [archiving, setArchiving] = useState(false)
   const [exportNote, setExportNote] = useState<string | null>(null)
+  const [compositionDialog, setCompositionDialog] = useState<'yeast' | 'additions' | null>(null)
+  const setYeast = useBatchesStore((s) => s.setYeast)
+  const setAdditions = useBatchesStore((s) => s.setAdditions)
+  const strains = useCatalogsStore((s) => s.strains)
+  const initCatalogs = useCatalogsStore((s) => s.init)
+
+  useEffect(() => {
+    void initCatalogs()
+  }, [initCatalogs])
 
   const isArchived = batch.status === 'archived'
   const otherStatuses = (Object.keys(STATUS_LABELS) as BatchStatus[]).filter(
@@ -443,21 +481,27 @@ function BatchCard(props: { full: BatchFullDto; onBack(): void; onDelete(): void
                   {full.yeast.map((y) => (
                     <li key={y.id}>
                       {y.strainName}
-                      {y.producer ? ` (${y.producer})` : ''} — {y.doseAmount} {y.doseUnit}
+                      {y.producer ? ` (${y.producer})` : ''} — {y.doseAmount} {doseUnitLabel(y.doseUnit)}
                     </li>
                   ))}
                 </ul>
               )}
+              <button type="button" onClick={() => setCompositionDialog('yeast')}>
+                {full.yeast.length === 0 ? 'Внести…' : 'Изменить…'}
+              </button>
               <h3>Добавки</h3>
               {full.additions.length === 0 ? (
                 <p className="muted">Не внесены</p>
               ) : (
                 <ul>
                   {full.additions.map((a) => (
-                    <li key={a.id}>{a.name} — {a.doseAmount} {a.doseUnit}</li>
+                    <li key={a.id}>{a.name} — {a.doseAmount} {doseUnitLabel(a.doseUnit)}</li>
                   ))}
                 </ul>
               )}
+              <button type="button" onClick={() => setCompositionDialog('additions')}>
+                {full.additions.length === 0 ? 'Внести…' : 'Изменить…'}
+              </button>
             </div>
 
             <div className="card">
@@ -517,6 +561,19 @@ function BatchCard(props: { full: BatchFullDto; onBack(): void; onDelete(): void
             setArchiving(false)
           }}
           onCancel={() => setArchiving(false)}
+        />
+      ) : null}
+
+      {compositionDialog ? (
+        <CompositionDialog
+          title={compositionDialog === 'yeast' ? 'Дрожжи партии' : 'Стартовые добавки'}
+          kind={compositionDialog}
+          initialYeast={yeastFromDto(full.yeast)}
+          initialAdditions={additionsFromDto(full.additions)}
+          strains={strains}
+          onClose={() => setCompositionDialog(null)}
+          onSaveYeast={async (rows) => { await setYeast(batch.id, rows) }}
+          onSaveAdditions={async (rows) => { await setAdditions(batch.id, rows) }}
         />
       ) : null}
     </section>

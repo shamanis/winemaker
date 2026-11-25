@@ -108,7 +108,7 @@ export const yeastInputSchema = z.object({
   strainName: z.string().min(1),
   producer: z.string().nullable().optional(),
   doseAmount: z.number().positive(),
-  doseUnit: z.enum(['g', 'ml', 'packet']),
+  doseUnit: z.enum(['g', 'ml', 'packet', 'tablet']),
   addedAtUtc: z.string(),
   productionDateUtc: z.string().nullable().optional()
 })
@@ -474,6 +474,16 @@ export const channels = {
     name: 'batches:export',
     request: z.object({ id: z.string().min(1) }),
     response: z.object({ path: z.string().nullable() })
+  }),
+  batchesSetYeast: defineChannel({
+    name: 'batches:set-yeast',
+    request: z.object({ batchId: z.string().min(1), yeast: z.array(yeastInputSchema) }),
+    response: z.object({ full: batchFullDtoSchema.nullable() })
+  }),
+  batchesSetAdditions: defineChannel({
+    name: 'batches:set-additions',
+    request: z.object({ batchId: z.string().min(1), additions: z.array(additionInputSchema) }),
+    response: z.object({ full: batchFullDtoSchema.nullable() })
   }),
 
   operationsListByBatch: defineChannel({
