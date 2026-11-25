@@ -1,0 +1,8 @@
+node_modules/
+out/
+release/
+*.local
+.DS_Store
+*.tsbuildinfo
+winemaker.db
+winemaker.db-*
