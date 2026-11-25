@@ -328,6 +328,18 @@ body {
   border-color: var(--color-danger);
 }
 
+/* Отключённые кнопки: серые, независимо от варианта (danger и др.) */
+.form-actions button:disabled {
+  color: var(--color-text-muted);
+  border-color: var(--color-border);
+  background: var(--color-bg);
+  cursor: not-allowed;
+}
+
+.form-actions button:disabled:hover {
+  background: var(--color-bg);
+}
+
 .error-text {
   color: var(--color-danger);
   margin: 0;
