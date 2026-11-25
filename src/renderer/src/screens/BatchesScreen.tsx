@@ -90,58 +90,43 @@ export function BatchesScreen(): ReactElement {
     <section className="screen">
       <div className="screen-header">
         <h2>Партии</h2>
-        <button type="button" onClick={() => setCreating(true)}>Новая партия</button>
+        <button
+          type="button"
+          className="btn-fab"
+          title="Новая партия"
+          aria-label="Новая партия"
+          onClick={() => setCreating(true)}
+        >
+          +
+        </button>
       </div>
 
-      <ul className="item-list">
-        {active.map((batch) => (
-          <li key={batch.id}>
-            <button type="button" className="item-open" onClick={() => void select(batch.id)}>
-              <div>
-                <strong>{batch.title}</strong> — {STATUS_LABELS[batch.status]}
-              </div>
-              <div className="muted">
-                <BatchListDensity batch={batch} /> · {daysFromStart(batch.startDateUtc)} дн. от постановки
-              </div>
-            </button>
-            <div className="item-actions">
-              <button
-                type="button"
-                title="Быстрый замер плотности"
-                onClick={() => setQuickMeasureBatchId(batch.id)}
-              >
-                Замер
-              </button>
-            </div>
-          </li>
-        ))}
-        {active.length === 0 ? (
+      {active.length > 0 ? (
+        <BatchTable
+          batches={active}
+          archived={false}
+          onOpen={(id) => void select(id)}
+          onMeasure={(id) => setQuickMeasureBatchId(id)}
+        />
+      ) : (
+        <ul className="item-list">
           <li className="empty-line">
             <strong>Поставьте первую партию</strong>
             <p>Замеры, операции и заметки будут собираться в единый журнал этой партии.</p>
             <button type="button" onClick={() => setCreating(true)}>Новая партия</button>
           </li>
-        ) : null}
-      </ul>
+        </ul>
+      )}
 
       {archived.length > 0 ? (
         <>
           <h3>Архив</h3>
-          <ul className="item-list">
-            {archived.map((batch) => (
-              <li key={batch.id}>
-                <button type="button" className="item-open" onClick={() => void select(batch.id)}>
-                  <div>
-                    <strong>{batch.title}</strong> — {STATUS_LABELS[batch.status]}
-                  </div>
-                  <div className="muted">
-                    {batch.finalResult?.abvPct != null ? `${batch.finalResult.abvPct} % об. · ` : ''}
-                    {daysFromStart(batch.startDateUtc)} дн. от постановки
-                  </div>
-                </button>
-              </li>
-            ))}
-          </ul>
+          <BatchTable
+            batches={archived}
+            archived
+            onOpen={(id) => void select(id)}
+            onMeasure={(id) => setQuickMeasureBatchId(id)}
+          />
         </>
       ) : null}
 
@@ -168,9 +153,54 @@ export function BatchesScreen(): ReactElement {
   )
 }
 
-/** Текущая плотность из кэша замеров; «—» пока замеров нет. */
-function BatchListDensity(props: { batch: BatchDto }): ReactElement {
-  const { batch } = props
+/** Таблица партий: Название, Статус, Дата, Сырьё, OG, Крепость, Сбраживание, Сахар, Действия. */
+function BatchTable(props: {
+  batches: BatchDto[]
+  archived: boolean
+  onOpen(id: string): void
+  onMeasure(id: string): void
+}): ReactElement {
+  const { batches, archived, onOpen, onMeasure } = props
+  return (
+    <div className="btable-wrap">
+      <table className="btable">
+        <thead>
+          <tr>
+            <th>Название</th>
+            <th>Статус</th>
+            <th>Дата создания</th>
+            <th>Сырьё</th>
+            <th>OG</th>
+            <th>Крепость</th>
+            <th>Сбраживание</th>
+            <th>Остаточный сахар</th>
+            <th className="actions">Действия</th>
+          </tr>
+        </thead>
+        <tbody>
+          {batches.map((batch) => (
+            <BatchTableRow
+              key={batch.id}
+              batch={batch}
+              archived={archived}
+              onOpen={onOpen}
+              onMeasure={onMeasure}
+            />
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+/** Строка таблицы: подгружает замеры партии и считает колонки аналитики. */
+function BatchTableRow(props: {
+  batch: BatchDto
+  archived: boolean
+  onOpen(id: string): void
+  onMeasure(id: string): void
+}): ReactElement {
+  const { batch, archived, onOpen, onMeasure } = props
   const list = useMeasurementsStore((s) => s.byBatch[batch.id])
   const loadFor = useMeasurementsStore((s) => s.loadFor)
   const unit = useSettingsStore((s) => s.settings?.densityUnit ?? 'sg')
@@ -179,8 +209,44 @@ function BatchListDensity(props: { batch: BatchDto }): ReactElement {
     void loadFor(batch.id)
   }, [batch.id, loadFor])
 
+  const ogSg = batch.startParams.gravity.ogSg
   const last = lastDensityMeasurement(list)
-  return <span>Плотность: {formatDensity(last?.correctedSg, unit)}</span>
+  const fg = last?.correctedSg ?? null
+  const abv =
+    archived && batch.finalResult?.abvPct != null
+      ? batch.finalResult.abvPct
+      : ogSg != null && fg != null
+        ? hallAbv(ogSg, fg)
+        : null
+  const attenuation = ogSg != null && fg != null ? apparentAttenuation(ogSg, fg) : null
+  const sugar = ogSg != null && fg != null ? residualSugar(ogSg, fg) : null
+
+  return (
+    <tr>
+      <td><strong>{batch.title}</strong></td>
+      <td><span className={`chip chip-${batch.status}`}>{STATUS_LABELS[batch.status]}</span></td>
+      <td className="num">{batch.startDateUtc.slice(0, 10)}</td>
+      <td>{batch.rawMaterial}</td>
+      <td className="num">{formatDensity(ogSg, unit)}</td>
+      <td className="num">{formatAbv(abv)}</td>
+      <td className="num">{attenuation != null ? `${attenuation.toFixed(1)} %` : '—'}</td>
+      <td className="num">{sugar != null ? `${sugar.toFixed(0)} г/л` : '—'}</td>
+      <td className="actions">
+        {!archived ? (
+          <button
+            type="button"
+            title="Быстрый замер плотности"
+            onClick={() => onMeasure(batch.id)}
+          >
+            +Замер
+          </button>
+        ) : null}
+        <button type="button" title="Открыть партию" onClick={() => onOpen(batch.id)}>
+          Обзор
+        </button>
+      </td>
+    </tr>
+  )
 }
 
 function BatchCreateForm(props: { onDone(): void; onCancel(): void }): ReactElement {
