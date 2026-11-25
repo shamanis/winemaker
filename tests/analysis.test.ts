@@ -104,7 +104,7 @@ describe('форматтеры (6.3.1, 6.3.2)', () => {
     expect(asBrix.startsWith(`${invertBrixToSg(sg).toFixed(1)} °Bx (`)).toBe(true)
 
     const asSg = formatDensity(1.0959, 'sg')
-    expect(asSg).toBe('1.0959 SG (11.5 °Bx)')
+    expect(asSg).toBe('1.0959 SG (22.9 °Bx)')
     expect(formatDensity(null, 'sg')).toBe('—')
   })
 })
