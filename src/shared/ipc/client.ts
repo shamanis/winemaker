@@ -15,6 +15,8 @@ import {
   type MeasurementDto,
   type MeasurementPatch,
   type MeasurementRevisionDto,
+  type OperationDto,
+  type OperationInput,
   type StrainDto,
   type StrainInput
 } from './contracts'
@@ -162,6 +164,21 @@ export function createApiClient(transport: WinemakerTransport) {
     ): Promise<InstrumentDto> =>
       (await invokeChannel(transport, 'instrumentsCalibrate', { instrumentId, refrBrix, hydrometerSg }))
         .item,
+
+    operations: {
+      listByBatch: async (batchId: string): Promise<OperationDto[]> =>
+        (await invokeChannel(transport, 'operationsListByBatch', { batchId })).items,
+      create: async (input: OperationInput): Promise<OperationDto> =>
+        ((await invokeChannel(transport, 'operationsCreate', input)) as { item: OperationDto }).item,
+      update: async (id: string, patch: Partial<OperationInput>): Promise<OperationDto | null> =>
+        ((await invokeChannel(transport, 'operationsUpdate', { id, patch })) as { item: OperationDto | null }).item,
+      remove: async (id: string): Promise<void> => {
+        await invokeChannel(transport, 'operationsDelete', { id })
+      }
+    },
+
+    exportBatch: async (id: string): Promise<string | null> =>
+      (await invokeChannel(transport, 'batchesExport', { id })).path,
 
     backupCompleted: (cb: EventListener<'backup:completed'>): (() => void) =>
       onEvent(transport, 'backup:completed', cb)

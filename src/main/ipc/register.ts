@@ -1,4 +1,5 @@
-import { ipcMain } from 'electron'
+import { ipcMain, dialog, BrowserWindow } from 'electron'
+import { writeFileSync } from 'node:fs'
 import {
   channels,
   settingsSchema,
@@ -9,6 +10,8 @@ import type { AppStateRepository } from '../app-state/repository'
 import type { InstrumentRepository, YeastStrainRepository } from '../catalogs/repositories'
 import type { BatchFull, BatchRepository } from '../batches/repository'
 import type { MeasurementRepository } from '../measurements/repository'
+import type { OperationRepository } from '../journal/repository'
+import { buildExportPayload } from '../export/payload'
 import type { InstrumentRow, MeasurementRevisionRow, MeasurementRow, YeastStrainRow } from '../db/schema'
 import type { UtilityRpc } from '../utility/spawn'
 import { nowUtcIso } from '../../shared/time/utc'
@@ -20,6 +23,7 @@ export interface IpcContext {
   strains: YeastStrainRepository
   batches: BatchRepository
   measurements: MeasurementRepository
+  operations: OperationRepository
   utility: UtilityRpc
 }
 
@@ -178,6 +182,51 @@ export function registerIpcHandlers(ctx: IpcContext): void {
   )
   handleChannel<{ id: string }, { ok: boolean }>(channels.batchesDelete, ({ id }) => {
     ctx.batches.delete(id)
+    return { ok: true }
+  })
+
+  /* Экспорт партии в JSON (спека data-portability): сборка — чистая функция,
+     файл пишет пользователь через диалог сохранения. */
+  handleChannel<{ id: string }, { path: string | null }>(channels.batchesExport, async ({ id }) => {
+    const full = ctx.batches.get(id)
+    if (!full) throw new Error('Batch not found')
+    const payload = buildExportPayload(
+      {
+        batch: full.batch,
+        measurements: ctx.measurements.listByBatch(id),
+        measurementRevisions: ctx.measurements.listRevisionsByBatch(id),
+        operations: ctx.operations.listByBatch(id),
+        yeast: full.yeast,
+        additions: full.additions,
+        statusHistory: full.history
+      },
+      ctx.appVersion
+    )
+    const result = await dialog.showSaveDialog({
+      title: 'Экспорт партии',
+      defaultPath: `winemaker-${full.batch.title.replace(/[^\wа-яёА-ЯЁ-]+/gi, '-')}.json`,
+      filters: [{ name: 'JSON', extensions: ['json'] }]
+    })
+    if (result.canceled || !result.filePath) return { path: null }
+    writeFileSync(result.filePath, JSON.stringify(payload, null, 2), 'utf-8')
+    return { path: result.filePath }
+  })
+
+  /* Операции журнала */
+  handleChannel<{ batchId: string }, { items: ReturnType<OperationRepository['listByBatch']> }>(
+    channels.operationsListByBatch,
+    ({ batchId }) => ({ items: ctx.operations.listByBatch(batchId) })
+  )
+  handleChannel<Parameters<OperationRepository['create']>[0], { item: ReturnType<OperationRepository['create']> }>(
+    channels.operationsCreate,
+    (input) => ({ item: ctx.operations.create(input) })
+  )
+  handleChannel<{ id: string; patch: Partial<Parameters<OperationRepository['update']>[1]> }, { item: ReturnType<OperationRepository['update']> | null }>(
+    channels.operationsUpdate,
+    ({ id, patch }) => ({ item: ctx.operations.update(id, patch) ?? null })
+  )
+  handleChannel<{ id: string }, { ok: boolean }>(channels.operationsDelete, ({ id }) => {
+    ctx.operations.delete(id)
     return { ok: true }
   })
 

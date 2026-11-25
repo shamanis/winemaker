@@ -4,13 +4,15 @@ import { useUiStore, TAB_ORDER, type ScreenTab } from './store/ui-store'
 import { BatchesScreen } from './screens/BatchesScreen'
 import { CatalogsScreen } from './screens/CatalogsScreen'
 import { SettingsScreen } from './screens/SettingsScreen'
+import { GlossaryScreen } from './screens/GlossaryScreen'
 import { HOTKEYS } from './keyboard/hotkeys'
 import { useHotkeys } from './keyboard/use-hotkeys'
 
 const TAB_LABELS: Record<ScreenTab, string> = {
   batches: 'Партии',
   catalogs: 'Справочники',
-  settings: 'Настройки'
+  settings: 'Настройки',
+  help: 'Справка'
 }
 
 export function App(): ReactElement {
@@ -34,7 +36,8 @@ export function App(): ReactElement {
     [HOTKEYS.toggleTheme]: toggleTheme,
     [HOTKEYS.batches]: () => setTab('batches'),
     [HOTKEYS.catalogs]: () => setTab('catalogs'),
-    [HOTKEYS.settings]: () => setTab('settings')
+    [HOTKEYS.settings]: () => setTab('settings'),
+    [HOTKEYS.help]: () => setTab('help')
   })
 
   /** Roving tabindex: стрелки перемещают фокус по табам. */
@@ -91,6 +94,7 @@ export function App(): ReactElement {
         {activeTab === 'batches' ? <BatchesScreen /> : null}
         {activeTab === 'catalogs' ? <CatalogsScreen /> : null}
         {activeTab === 'settings' ? <SettingsScreen /> : null}
+        {activeTab === 'help' ? <GlossaryScreen /> : null}
       </main>
 
       <footer className="app-footer">

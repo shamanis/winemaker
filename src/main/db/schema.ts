@@ -179,3 +179,23 @@ export const measurementRevisions = sqliteTable('measurement_revisions', {
 
 export type MeasurementRevisionRow = typeof measurementRevisions.$inferSelect
 export type NewMeasurementRevisionRow = typeof measurementRevisions.$inferInsert
+
+/**
+ * Технологическая операция партии (спека batch-journal):
+ * снятие с осадка, переливка, сахар, оклейка и т. п.
+ */
+export const batchOperations = sqliteTable('batch_operations', {
+  id: text('id').primaryKey(),
+  batchId: text('batch_id')
+    .notNull()
+    .references(() => batches.id, { onDelete: 'cascade' }),
+  /** 'rack' | 'transfer' | 'sugar' | 'acid' | 'nutrient' | 'fining' | 'bottling' | 'other' */
+  kind: text('kind').notNull(),
+  atUtc: text('at_utc').notNull(),
+  notes: text('notes'),
+  createdAtUtc: text('created_at_utc').notNull(),
+  updatedAtUtc: text('updated_at_utc').notNull()
+})
+
+export type BatchOperationRow = typeof batchOperations.$inferSelect
+export type NewBatchOperationRow = typeof batchOperations.$inferInsert

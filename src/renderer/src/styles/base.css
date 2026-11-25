@@ -423,3 +423,157 @@ body {
 .catalog {
   width: 100%;
 }
+
+/* График плотности (спека density-chart) */
+.chart {
+  margin: 0 0 1.25rem;
+}
+
+.chart-svg {
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+  background: var(--color-bg);
+}
+
+.chart-axis {
+  stroke: var(--color-border);
+}
+
+.chart-line {
+  fill: none;
+  stroke: var(--color-accent);
+  stroke-width: 2;
+}
+
+.chart-waterline {
+  stroke: var(--color-border);
+  stroke-dasharray: 4 4;
+}
+
+.chart-label {
+  fill: var(--color-text-muted);
+  font-size: 10px;
+}
+
+.chart-point {
+  cursor: pointer;
+}
+
+.chart-point:hover {
+  stroke: var(--color-danger);
+  stroke-width: 2;
+}
+
+.chart-marker-hydro { fill: var(--color-accent); }
+.chart-marker-refr { fill: var(--color-danger); }
+.chart-marker-other { fill: var(--color-text-muted); }
+
+.chart-legend {
+  display: flex;
+  gap: 1rem;
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+  margin-top: 0.375rem;
+  align-items: center;
+}
+
+/* Журнал: бейджи типов событий */
+.badge {
+  display: inline-block;
+  font-size: 0.75rem;
+  padding: 0.125rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  margin-right: 0.375rem;
+}
+
+.badge-measure {
+  color: var(--color-accent);
+  border-color: var(--color-accent);
+}
+
+.badge-op {
+  color: var(--color-text);
+  border-color: var(--color-text-muted);
+}
+
+.badge-status {
+  color: var(--color-text-muted);
+}
+
+/* Термины (спека glossary): пунктир + подсказка при наведении */
+.term {
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+  cursor: help;
+}
+
+.term:hover,
+.term:focus-visible {
+  color: var(--color-accent);
+}
+
+/* Справка */
+.help-heading {
+  margin: 1rem 0 0.5rem;
+  font-size: 1rem;
+}
+
+.help-list {
+  margin: 0 0 1rem;
+}
+
+.help-item {
+  display: grid;
+  grid-template-columns: 8rem 1fr;
+  gap: 0.75rem;
+  padding: 0.375rem 0;
+  border-bottom: 1px solid var(--color-border);
+  font-size: 0.875rem;
+}
+
+.help-item dt {
+  font-weight: 600;
+}
+
+.help-item dd {
+  margin: 0;
+  color: var(--color-text-muted);
+}
+
+.help-formulas {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: 0.75rem;
+}
+
+.formula {
+  display: block;
+  font-family: ui-monospace, monospace;
+  font-size: 0.8125rem;
+  background: var(--color-bg-muted);
+  border-radius: 0.375rem;
+  padding: 0.5rem;
+  margin-bottom: 0.375rem;
+  white-space: normal;
+  word-break: break-word;
+}
+
+.detail-list {
+  margin: 0 0 0.5rem;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.25rem 0.75rem;
+  font-size: 0.875rem;
+}
+
+.detail-list dt {
+  color: var(--color-text-muted);
+}
+
+.detail-list dd {
+  margin: 0;
+}

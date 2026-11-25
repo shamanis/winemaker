@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { api } from '../api'
 
-export type ScreenTab = 'batches' | 'catalogs' | 'settings'
+export type ScreenTab = 'batches' | 'catalogs' | 'settings' | 'help'
 
 interface UiStoreState {
   activeTab: ScreenTab
@@ -9,7 +9,7 @@ interface UiStoreState {
   setTab(tab: ScreenTab): void
 }
 
-const TAB_ORDER: ScreenTab[] = ['batches', 'catalogs', 'settings']
+const TAB_ORDER: ScreenTab[] = ['batches', 'catalogs', 'settings', 'help']
 
 function isScreenTab(value: unknown): value is ScreenTab {
   return typeof value === 'string' && TAB_ORDER.includes(value as ScreenTab)

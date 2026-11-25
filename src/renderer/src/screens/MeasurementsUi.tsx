@@ -476,3 +476,29 @@ function MeasurementDetail(props: {
     </div>
   )
 }
+
+/**
+ * Карточка замера с автозагрузкой ревизий — общая для списка и графика
+ * (спека density-chart: точка → карточка замера).
+ */
+export function MeasurementDetailModal(props: {
+  measurement: MeasurementDto
+  onClose(): void
+}): ReactElement {
+  const { measurement, onClose } = props
+  const revisions = useMeasurementsStore((s) => s.revisionsByMeasurement[measurement.id])
+  const loadRevisions = useMeasurementsStore((s) => s.loadRevisions)
+
+  useEffect(() => {
+    void loadRevisions(measurement.id)
+  }, [measurement.id, loadRevisions])
+
+  return (
+    <MeasurementDetail
+      measurement={measurement}
+      revisions={revisions}
+      onOpenRevisions={() => void loadRevisions(measurement.id)}
+      onClose={onClose}
+    />
+  )
+}

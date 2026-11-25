@@ -133,6 +133,33 @@ export type AdditionInput = z.infer<typeof additionInputSchema>
 export const additionDtoSchema = additionInputSchema.extend({ id: z.string(), batchId: z.string() })
 export type AdditionDto = z.infer<typeof additionDtoSchema>
 
+export const operationKindSchema = z.enum([
+  'rack',
+  'transfer',
+  'sugar',
+  'acid',
+  'nutrient',
+  'fining',
+  'bottling',
+  'other'
+])
+export type OperationKind = z.infer<typeof operationKindSchema>
+
+export const operationInputSchema = z.object({
+  batchId: z.string().min(1),
+  kind: operationKindSchema,
+  atUtc: z.string(),
+  notes: z.string().nullable().optional()
+})
+export type OperationInput = z.infer<typeof operationInputSchema>
+
+export const operationDtoSchema = operationInputSchema.extend({
+  id: z.string(),
+  createdAtUtc: z.string(),
+  updatedAtUtc: z.string()
+})
+export type OperationDto = z.infer<typeof operationDtoSchema>
+
 export const batchStatusSchema = z.enum([
   'fermenting',
   'slow-fermenting',
@@ -344,6 +371,7 @@ function crudChannels<In extends z.ZodObject<any>, Dto extends z.ZodType>(
 
 const instrumentsCrud = crudChannels('instruments', instrumentInputSchema, instrumentDtoSchema)
 const strainsCrud = crudChannels('yeast-strains', strainInputSchema, strainDtoSchema)
+const operationsCrud = crudChannels('operations', operationInputSchema, operationDtoSchema)
 
 /* ── Служебные каналы каркаса ── */
 
@@ -442,6 +470,20 @@ export const channels = {
     request: z.object({ id: z.string() }),
     response: z.object({ ok: z.boolean() })
   }),
+  batchesExport: defineChannel({
+    name: 'batches:export',
+    request: z.object({ id: z.string().min(1) }),
+    response: z.object({ path: z.string().nullable() })
+  }),
+
+  operationsListByBatch: defineChannel({
+    name: 'operations:list-by-batch',
+    request: z.object({ batchId: z.string().min(1) }),
+    response: z.object({ items: z.array(operationDtoSchema) })
+  }),
+  operationsCreate: operationsCrud.create,
+  operationsUpdate: operationsCrud.update,
+  operationsDelete: operationsCrud.delete,
 
   settingsGet: defineChannel({
     name: 'settings:get',

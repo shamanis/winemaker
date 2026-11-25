@@ -9,6 +9,7 @@ import { InstrumentRepository, YeastStrainRepository } from './catalogs/reposito
 import { BatchRepository } from './batches/repository'
 import { MeasurementRepository } from './measurements/repository'
 import { createResolveContextProvider } from './measurements/context'
+import { OperationRepository } from './journal/repository'
 import { registerIpcHandlers } from './ipc/register'
 import {
   spawnUtilityUtility,
@@ -94,6 +95,7 @@ async function main(): Promise<void> {
     markDirty,
     createResolveContextProvider({ appState: repo, instruments, batches })
   )
+  const operations = new OperationRepository(dbHandle.db, markDirty)
 
   utility = spawnUtilityUtility(utilityModulePath())
 
@@ -104,6 +106,7 @@ async function main(): Promise<void> {
     strains,
     batches,
     measurements,
+    operations,
     utility: utility.rpc
   })
 

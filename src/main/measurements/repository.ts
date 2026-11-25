@@ -174,6 +174,16 @@ export class MeasurementRepository {
       .all()
   }
 
+  /** Все ревизии замеров партии — для экспорта (design D5). */
+  listRevisionsByBatch(batchId: string): MeasurementRevisionRow[] {
+    return this.db
+      .select()
+      .from(measurementRevisions)
+      .where(eq(measurementRevisions.batchId, batchId))
+      .orderBy(asc(measurementRevisions.revisedAtUtc))
+      .all()
+  }
+
   private insertRevision(
     batchId: string,
     measurementId: string,

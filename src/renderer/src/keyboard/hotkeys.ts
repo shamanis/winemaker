@@ -10,7 +10,9 @@ export const HOTKEYS = {
   /** Экран справочников. */
   catalogs: 'Mod+2',
   /** Экран настроек. */
-  settings: 'Mod+3'
+  settings: 'Mod+3',
+  /** Экран справки. */
+  help: 'Mod+4'
 } as const
 
 export type HotkeyAction = keyof typeof HOTKEYS

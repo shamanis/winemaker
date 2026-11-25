@@ -1,11 +1,28 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactElement } from 'react'
-import type { BatchDto, BatchFullDto, BatchStatus, FinalResultDto } from '@shared/ipc/contracts'
+import type { BatchDto, BatchFullDto, BatchStatus, FinalResultDto, MeasurementDto } from '@shared/ipc/contracts'
 import { resolveOgSg } from '@shared/calculations/density'
+import {
+  apparentAttenuation,
+  forecastCompletion,
+  formatAbv,
+  formatDensity,
+  hallAbv,
+  residualSugar
+} from '@shared/calculations/analysis'
 import { toUtcIso } from '@shared/time/utc'
 import { useBatchesStore, STATUS_LABELS, daysFromStart } from '../store/batches-store'
 import { useCatalogsStore, INSTRUMENT_TYPE_LABELS } from '../store/catalogs-store'
 import { useSettingsStore } from '../store/settings-store'
-import { MeasurementsSection, MeasurementDialog } from './MeasurementsUi'
+import { useMeasurementsStore, lastDensityMeasurement } from '../store/measurements-store'
+import { api } from '../api'
+import {
+  MeasurementsSection,
+  MeasurementDialog,
+  MeasurementDetailModal
+} from './MeasurementsUi'
+import { DensityChart } from './DensityChart'
+import { JournalSection } from './JournalSection'
+import { Term } from '../ui/Term'
 
 /**
  * Экран партий (спека batch-management): список активных и архивных,
@@ -35,10 +52,6 @@ export function BatchesScreen(): ReactElement {
     return <section className="screen"><p className="muted">Загрузка партий…</p></section>
   }
 
-  const quickMeasureBatch = quickMeasureBatchId
-    ? [...active, ...archived].find((b) => b.id === quickMeasureBatchId) ?? null
-    : null
-
   if (selected) {
     return (
       <BatchCard
@@ -52,6 +65,10 @@ export function BatchesScreen(): ReactElement {
   if (creating) {
     return <BatchCreateForm onDone={() => setCreating(false)} onCancel={() => setCreating(false)} />
   }
+
+  const quickMeasureBatch = quickMeasureBatchId
+    ? [...active, ...archived].find((b) => b.id === quickMeasureBatchId) ?? null
+    : null
 
   return (
     <section className="screen">
@@ -68,8 +85,7 @@ export function BatchesScreen(): ReactElement {
                 <strong>{batch.title}</strong> — {STATUS_LABELS[batch.status]}
               </div>
               <div className="muted">
-                {/* Текущая плотность появится с замерами; «Замер» — быстрый ввод */}
-                Плотность: — · {daysFromStart(batch.startDateUtc)} дн. от постановки
+                <BatchListDensity batch={batch} /> · {daysFromStart(batch.startDateUtc)} дн. от постановки
               </div>
             </button>
             <div className="item-actions">
@@ -97,7 +113,17 @@ export function BatchesScreen(): ReactElement {
           <h3>Архив</h3>
           <ul className="item-list">
             {archived.map((batch) => (
-              <BatchListItem key={batch.id} batch={batch} onOpen={() => void select(batch.id)} />
+              <li key={batch.id}>
+                <button type="button" className="item-open" onClick={() => void select(batch.id)}>
+                  <div>
+                    <strong>{batch.title}</strong> — {STATUS_LABELS[batch.status]}
+                  </div>
+                  <div className="muted">
+                    {batch.finalResult?.abvPct != null ? `${batch.finalResult.abvPct} % об. · ` : ''}
+                    {daysFromStart(batch.startDateUtc)} дн. от постановки
+                  </div>
+                </button>
+              </li>
             ))}
           </ul>
         </>
@@ -126,29 +152,26 @@ export function BatchesScreen(): ReactElement {
   )
 }
 
-function BatchListItem(props: { batch: BatchDto; onOpen(): void }): ReactElement {
-  const { batch, onOpen } = props
-  return (
-    <li className="clickable" onClick={onOpen}>
-      <button type="button" className="item-open">
-        <div>
-          <strong>{batch.title}</strong> — {STATUS_LABELS[batch.status]}
-        </div>
-        <div className="muted">
-          {/* Текущая плотность появится с замерами (этап измерений) */}
-          Плотность: — · {daysFromStart(batch.startDateUtc)} дн. от постановки
-        </div>
-      </button>
-    </li>
-  )
+/** Текущая плотность из кэша замеров; «—» пока замеров нет. */
+function BatchListDensity(props: { batch: BatchDto }): ReactElement {
+  const { batch } = props
+  const list = useMeasurementsStore((s) => s.byBatch[batch.id])
+  const loadFor = useMeasurementsStore((s) => s.loadFor)
+  const unit = useSettingsStore((s) => s.settings?.densityUnit ?? 'sg')
+
+  useEffect(() => {
+    void loadFor(batch.id)
+  }, [batch.id, loadFor])
+
+  const last = lastDensityMeasurement(list)
+  return <span>Плотность: {formatDensity(last?.correctedSg, unit)}</span>
 }
 
 function BatchCreateForm(props: { onDone(): void; onCancel(): void }): ReactElement {
   const { onDone, onCancel } = props
   const instruments = useCatalogsStore((s) => s.instruments)
-  const strains = useCatalogsStore((s) => s.strains)
-  const initCatalogs = useCatalogsStore((s) => s.init)
   const settings = useSettingsStore((s) => s.settings)
+  const initCatalogs = useCatalogsStore((s) => s.init)
   const initSettings = useSettingsStore((s) => s.init)
   const create = useBatchesStore((s) => s.create)
 
@@ -318,13 +341,23 @@ function BatchCreateForm(props: { onDone(): void; onCancel(): void }): ReactElem
   )
 }
 
+type BatchTab = 'overview' | 'measurements' | 'journal'
+
+const BATCH_TABS: Array<{ id: BatchTab; label: string }> = [
+  { id: 'overview', label: 'Обзор' },
+  { id: 'measurements', label: 'Замеры' },
+  { id: 'journal', label: 'Журнал' }
+]
+
 function BatchCard(props: { full: BatchFullDto; onBack(): void; onDelete(): void }): ReactElement {
   const { full, onBack, onDelete } = props
   const { batch } = full
   const changeStatus = useBatchesStore((s) => s.changeStatus)
   const archive = useBatchesStore((s) => s.archive)
 
+  const [tab, setTab] = useState<BatchTab>('overview')
   const [archiving, setArchiving] = useState(false)
+  const [exportNote, setExportNote] = useState<string | null>(null)
 
   const isArchived = batch.status === 'archived'
   const otherStatuses = (Object.keys(STATUS_LABELS) as BatchStatus[]).filter(
@@ -332,6 +365,15 @@ function BatchCard(props: { full: BatchFullDto; onBack(): void; onDelete(): void
   )
 
   const startParams = batch.startParams
+
+  const exportJson = async (): Promise<void> => {
+    try {
+      const path = await api.exportBatch(batch.id)
+      setExportNote(path ? `Экспортировано: ${path}` : 'Экспорт отменён')
+    } catch (e) {
+      setExportNote(`Ошибка: ${e instanceof Error ? e.message : String(e)}`)
+    }
+  }
 
   return (
     <section className="screen">
@@ -341,109 +383,132 @@ function BatchCard(props: { full: BatchFullDto; onBack(): void; onDelete(): void
         <span className={`chip chip-${batch.status}`}>{STATUS_LABELS[batch.status]}</span>
       </div>
 
-      <div className="card-grid">
-        <div className="card">
-          <h3>Карточка</h3>
-          <dl>
-            <dt>Сырьё</dt><dd>{batch.rawMaterial}</dd>
-            <dt>Стиль</dt><dd>{batch.style ?? '—'}</dd>
-            <dt>Объём</dt><dd>{batch.volumeLiters !== null ? `${batch.volumeLiters} л` : '—'}</dd>
-            <dt>Постановка</dt><dd>{batch.startDateUtc.slice(0, 10)}</dd>
-            <dt>Дней от постановки</dt><dd>{daysFromStart(batch.startDateUtc)}</dd>
-          </dl>
-        </div>
-
-        <div className="card">
-          <h3>Стартовые параметры</h3>
-          <dl>
-            <dt>Сырое показание</dt>
-            <dd>
-              {startParams.gravity.raw.value} {startParams.gravity.raw.unit === 'brix' ? '°Bx' : 'SG'}
-            </dd>
-            <dt>OG (SG)</dt>
-            <dd>{startParams.gravity.ogSg.toFixed(4)}</dd>
-            {startParams.gravity.correctedBrix != null ? (
-              <>
-                <dt>Скорректировано</dt>
-                <dd>{startParams.gravity.correctedBrix.toFixed(2)} °Bx</dd>
-              </>
-            ) : null}
-            <dt>pH</dt><dd>{startParams.ph ?? '—'}</dd>
-            <dt>Температура</dt><dd>{startParams.tempC !== null && startParams.tempC !== undefined ? `${startParams.tempC} °C` : '—'}</dd>
-          </dl>
-        </div>
-
-        <div className="card">
-          <h3>Дрожжи</h3>
-          {full.yeast.length === 0 ? (
-            <p className="muted">Не внесены</p>
-          ) : (
-            <ul>
-              {full.yeast.map((y) => (
-                <li key={y.id}>
-                  {y.strainName}
-                  {y.producer ? ` (${y.producer})` : ''} — {y.doseAmount} {y.doseUnit}
-                </li>
-              ))}
-            </ul>
-          )}
-          <h3>Добавки</h3>
-          {full.additions.length === 0 ? (
-            <p className="muted">Не внесены</p>
-          ) : (
-            <ul>
-              {full.additions.map((a) => (
-                <li key={a.id}>{a.name} — {a.doseAmount} {a.doseUnit}</li>
-              ))}
-            </ul>
-          )}
-        </div>
-
-        <div className="card">
-          <h3>История статусов</h3>
-          <ol>
-            {full.history.map((h) => (
-              <li key={h.id}>
-                {STATUS_LABELS[h.toStatus]} — {h.atUtc.slice(0, 16).replace('T', ' ')} UTC
-              </li>
-            ))}
-          </ol>
-        </div>
+      <div className="subtabs" role="tablist" aria-label="Разделы партии">
+        {BATCH_TABS.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            role="tab"
+            aria-selected={tab === t.id}
+            className={tab === t.id ? 'subtab active' : 'subtab'}
+            onClick={() => setTab(t.id)}
+          >
+            {t.label}
+          </button>
+        ))}
       </div>
 
-      {!isArchived ? (
-        <div className="form-actions">
-          {otherStatuses.map((s) => (
-            <button key={s} type="button" onClick={() => void changeStatus(batch.id, s)}>
-              → {STATUS_LABELS[s]}
-            </button>
-          ))}
-          <button type="button" onClick={() => setArchiving(true)}>Архивировать…</button>
-          <button type="button" className="danger" onClick={onDelete}>Удалить…</button>
-        </div>
-      ) : (
-        <div className="form-actions">
-          <button type="button" className="danger" onClick={onDelete}>Удалить…</button>
-        </div>
-      )}
+      {tab === 'overview' ? (
+        <>
+          <div className="card-grid">
+            <div className="card">
+              <h3>Карточка</h3>
+              <dl>
+                <dt>Сырьё</dt><dd>{batch.rawMaterial}</dd>
+                <dt>Стиль</dt><dd>{batch.style ?? '—'}</dd>
+                <dt>Объём</dt><dd>{batch.volumeLiters !== null ? `${batch.volumeLiters} л` : '—'}</dd>
+                <dt>Постановка</dt><dd>{batch.startDateUtc.slice(0, 10)}</dd>
+                <dt>Дней от постановки</dt><dd>{daysFromStart(batch.startDateUtc)}</dd>
+              </dl>
+            </div>
 
-      {batch.finalResult ? (
-        <div className="card">
-          <h3>Итоговые характеристики</h3>
-          <dl>
-            <dt>Финальная плотность</dt>
-            <dd>{batch.finalResult.finalGravity ?? '—'}</dd>
-            <dt>Крепость</dt>
-            <dd>{batch.finalResult.abvPct != null ? `${batch.finalResult.abvPct} % об.` : '—'}</dd>
-            <dt>Органолептика</dt>
-            <dd>{batch.finalResult.tastingNotes ?? '—'}</dd>
-          </dl>
-        </div>
+            <div className="card">
+              <h3>Стартовые параметры</h3>
+              <dl>
+                <dt>Сырое показание</dt>
+                <dd>
+                  {startParams.gravity.raw.value} {startParams.gravity.raw.unit === 'brix' ? '°Bx' : 'SG'}
+                </dd>
+                <dt><Term id="og">OG (SG)</Term></dt>
+                <dd>{formatDensity(startParams.gravity.ogSg, 'sg')}</dd>
+                {startParams.gravity.correctedBrix != null ? (
+                  <>
+                    <dt>Скорректировано</dt>
+                    <dd>{startParams.gravity.correctedBrix.toFixed(2)} °Bx</dd>
+                  </>
+                ) : null}
+                <dt>pH</dt><dd>{startParams.ph ?? '—'}</dd>
+                <dt>Температура</dt><dd>{startParams.tempC !== null && startParams.tempC !== undefined ? `${startParams.tempC} °C` : '—'}</dd>
+              </dl>
+            </div>
+
+            <CalculationsCard batch={batch} />
+
+            <div className="card">
+              <h3>Дрожжи</h3>
+              {full.yeast.length === 0 ? (
+                <p className="muted">Не внесены</p>
+              ) : (
+                <ul>
+                  {full.yeast.map((y) => (
+                    <li key={y.id}>
+                      {y.strainName}
+                      {y.producer ? ` (${y.producer})` : ''} — {y.doseAmount} {y.doseUnit}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <h3>Добавки</h3>
+              {full.additions.length === 0 ? (
+                <p className="muted">Не внесены</p>
+              ) : (
+                <ul>
+                  {full.additions.map((a) => (
+                    <li key={a.id}>{a.name} — {a.doseAmount} {a.doseUnit}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <div className="card">
+              <h3>История статусов</h3>
+              <ol>
+                {full.history.map((h) => (
+                  <li key={h.id}>
+                    {STATUS_LABELS[h.toStatus]} — {h.atUtc.slice(0, 16).replace('T', ' ')} UTC
+                  </li>
+                ))}
+              </ol>
+            </div>
+          </div>
+
+          {batch.finalResult ? (
+            <div className="card">
+              <h3>Итоговые характеристики</h3>
+              <dl>
+                <dt>Финальная плотность</dt>
+                <dd>{batch.finalResult.finalGravity ?? '—'}</dd>
+                <dt>Крепость</dt>
+                <dd>{formatAbv(batch.finalResult.abvPct)}</dd>
+                <dt>Органолептика</dt>
+                <dd>{batch.finalResult.tastingNotes ?? '—'}</dd>
+              </dl>
+            </div>
+          ) : null}
+
+          <div className="form-actions">
+            {!isArchived
+              ? otherStatuses.map((s) => (
+                  <button key={s} type="button" onClick={() => void changeStatus(batch.id, s)}>
+                    → {STATUS_LABELS[s]}
+                  </button>
+                ))
+              : null}
+            {!isArchived ? (
+              <button type="button" onClick={() => setArchiving(true)}>Архивировать…</button>
+            ) : null}
+            <button type="button" onClick={() => void exportJson()}>Экспорт JSON…</button>
+            <button type="button" className="danger" onClick={onDelete}>Удалить…</button>
+          </div>
+          {exportNote ? <p className="muted">{exportNote}</p> : null}
+        </>
       ) : null}
 
-      {!isArchived ? (
-        <MeasurementsSection batch={batch} />
+      {tab === 'measurements' ? (
+        <MeasurementsTab batch={batch} />
       ) : null}
+
+      {tab === 'journal' ? <JournalSection batch={batch} /> : null}
 
       {archiving ? (
         <ArchiveDialog
@@ -455,6 +520,54 @@ function BatchCard(props: { full: BatchFullDto; onBack(): void; onDelete(): void
         />
       ) : null}
     </section>
+  )
+}
+
+/** Блок «Расчёты»: только по скорректированным значениям (спека fermentation-calculations). */
+function CalculationsCard(props: { batch: BatchDto }): ReactElement {
+  const { batch } = props
+  const list = useMeasurementsStore((s) => s.byBatch[batch.id])
+  const unit = useSettingsStore((s) => s.settings?.densityUnit ?? 'sg')
+
+  const ogSg = batch.startParams.gravity.ogSg
+  const last = lastDensityMeasurement(list)
+  const fg = last?.correctedSg ?? null
+
+  const abv = ogSg != null && fg != null ? hallAbv(ogSg, fg) : null
+  const attenuation = ogSg != null && fg != null ? apparentAttenuation(ogSg, fg) : null
+  const sugar = ogSg != null && fg != null ? residualSugar(ogSg, fg) : null
+  const forecast = useMemo(
+    () =>
+      forecastCompletion(
+        (list ?? [])
+          .filter((m) => m.kind === 'density' && m.correctedSg != null)
+          .map((m) => ({ atUtc: m.measuredAtUtc, sg: m.correctedSg as number }))
+      ),
+    [list]
+  )
+
+  return (
+    <div className="card">
+      <h3><Term id="abv">Расчёты</Term></h3>
+      <dl>
+        <dt>Крепость (текущая)</dt>
+        <dd>{formatAbv(abv)}</dd>
+        <dt>Сбраживание</dt>
+        <dd>{attenuation != null ? `${attenuation.toFixed(1)} %` : '—'}</dd>
+        <dt>Остаточный сахар</dt>
+        <dd>{sugar != null ? `${sugar.toFixed(1)} г/л` : '—'}</dd>
+        <dt>Прогноз завершения</dt>
+        <dd>
+          {forecast.kind === 'range'
+            ? `${forecast.fromUtc.slice(0, 10)} — ${forecast.toUtc.slice(0, 10)}`
+            : forecast.message}
+        </dd>
+      </dl>
+      <p className="muted">
+        Расчёты по скорректированным значениям · формулы: Hall, Баллинг ·{' '}
+        <Term id="abv">подробнее в Справке</Term>
+      </p>
+    </div>
   )
 }
 
@@ -520,5 +633,37 @@ function ConfirmDialog(props: {
         </div>
       </div>
     </div>
+  )
+}
+
+/**
+ * Вкладка «Замеры»: график динамики + список замеров; клик по точке
+ * графика открывает карточку замера (спека density-chart).
+ */
+function MeasurementsTab(props: { batch: BatchDto }): ReactElement {
+  const { batch } = props
+  const list = useMeasurementsStore((s) => s.byBatch[batch.id])
+  const loadFor = useMeasurementsStore((s) => s.loadFor)
+  const [chartOpenId, setChartOpenId] = useState<string | null>(null)
+
+  useEffect(() => {
+    void loadFor(batch.id)
+  }, [batch.id, loadFor])
+
+  const chartMeasurement = chartOpenId
+    ? (list ?? []).find((m) => m.id === chartOpenId) ?? null
+    : null
+
+  return (
+    <>
+      <DensityChart measurements={list ?? []} onOpen={setChartOpenId} />
+      <MeasurementsSection batch={batch} />
+      {chartMeasurement ? (
+        <MeasurementDetailModal
+          measurement={chartMeasurement}
+          onClose={() => setChartOpenId(null)}
+        />
+      ) : null}
+    </>
   )
 }
