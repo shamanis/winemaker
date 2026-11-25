@@ -24,16 +24,6 @@ export interface MeasurementCreateInput {
   notes?: string | null
 }
 
-export interface MeasurementUpdateInput {
-  kind?: 'density' | 'temperature' | 'ph'
-  instrumentId?: string | null
-  rawValue?: number
-  unit?: 'sg' | 'brix'
-  tempC?: number | null
-  measuredAtUtc?: string
-  notes?: string | null
-}
-
 /** Провайдер контекста коррекции: прибор, формула из настроек, старт партии. */
 export type ResolveContextProvider = (
   batchId: string,
@@ -113,47 +103,6 @@ export class MeasurementRepository {
 
   get(id: string): MeasurementRow | undefined {
     return this.db.select().from(measurements).where(eq(measurements.id, id)).get()
-  }
-
-  /** Правка: снапшот в ревизии, пересчёт коррекции по новым данным. */
-  update(id: string, patch: MeasurementUpdateInput): MeasurementRow | undefined {
-    const current = this.get(id)
-    if (!current) return undefined
-
-    this.insertRevision(current.batchId, id, 'update', current)
-
-    const merged: MeasurementCreateInput = {
-      batchId: current.batchId,
-      kind: patch.kind ?? (current.kind as MeasurementCreateInput['kind']),
-      instrumentId: patch.instrumentId !== undefined ? patch.instrumentId : current.instrumentId,
-      rawValue: patch.rawValue ?? current.rawValue,
-      unit: patch.unit ?? (current.unit as 'sg' | 'brix'),
-      tempC: patch.tempC !== undefined ? patch.tempC : current.tempC,
-      measuredAtUtc: patch.measuredAtUtc ?? current.measuredAtUtc,
-      notes: patch.notes !== undefined ? patch.notes : current.notes
-    }
-    const resolved = this.resolveFor(merged)
-
-    const updated = this.db
-      .update(measurements)
-      .set({
-        kind: merged.kind,
-        instrumentId: merged.instrumentId,
-        rawValue: merged.rawValue,
-        unit: merged.unit,
-        tempC: merged.tempC,
-        correctedSg: resolved.correctedSg,
-        correctedBrix: resolved.correctedBrix,
-        corrections: { steps: resolved.corrections, warnings: resolved.warnings },
-        measuredAtUtc: merged.measuredAtUtc,
-        notes: merged.notes,
-        updatedAtUtc: nowUtcIso()
-      })
-      .where(eq(measurements.id, id))
-      .returning()
-      .get()
-    if (updated) this.markDirty()
-    return updated
   }
 
   /** Удаление: снапшот с action=delete, затем удаление. */

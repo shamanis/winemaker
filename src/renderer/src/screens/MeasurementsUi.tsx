@@ -47,10 +47,9 @@ function buildContext(batch: BatchDto, instrumentId: string | null): PipelineCon
  */
 export function MeasurementDialog(props: {
   batch: BatchDto
-  existing?: MeasurementDto | null
   onClose(): void
 }): ReactElement {
-  const { batch, existing, onClose } = props
+  const { batch, onClose } = props
   const instruments = useCatalogsStore((s) => s.instruments)
   const catalogsLoaded = useCatalogsStore((s) => s.loaded)
   const initCatalogs = useCatalogsStore((s) => s.init)
@@ -58,7 +57,6 @@ export function MeasurementDialog(props: {
   const measurementsByBatch = useMeasurementsStore((s) => s.byBatch[batch.id])
   const loadFor = useMeasurementsStore((s) => s.loadFor)
   const create = useMeasurementsStore((s) => s.create)
-  const update = useMeasurementsStore((s) => s.update)
 
   // Диалог может открыться прямо из списка — справочник приборов ещё
   // мог не загрузиться (иначе предпросмотр найдёт null-прибор).
@@ -68,17 +66,18 @@ export function MeasurementDialog(props: {
 
   const last = useMemo(() => lastDensityMeasurement(measurementsByBatch), [measurementsByBatch])
 
-  const [kind, setKind] = useState<MeasurementKind>(existing?.kind ?? 'density')
-  const [rawValue, setRawValue] = useState(existing ? String(existing.rawValue) : '')
-  const [unit, setUnit] = useState<'sg' | 'brix'>(
-    existing?.unit ?? settings?.densityUnit ?? 'sg'
-  )
-  const [instrumentId, setInstrumentId] = useState<string>(
-    existing?.instrumentId ?? last?.instrumentId ?? ''
-  )
-  const [tempC, setTempC] = useState<string>(
-    existing?.tempC != null ? String(existing.tempC) : last?.tempC != null ? String(last.tempC) : ''
-  )
+  const nowLocal = useMemo(() => {
+    const d = new Date()
+    d.setMinutes(d.getMinutes() - d.getTimezoneOffset())
+    return d.toISOString().slice(0, 16)
+  }, [])
+
+  const [kind, setKind] = useState<MeasurementKind>('density')
+  const [rawValue, setRawValue] = useState('')
+  const [unit, setUnit] = useState<'sg' | 'brix'>(settings?.densityUnit ?? 'sg')
+  const [instrumentId, setInstrumentId] = useState<string>(last?.instrumentId ?? '')
+  const [tempC, setTempC] = useState<string>(last?.tempC != null ? String(last.tempC) : '')
+  const [measuredAt, setMeasuredAt] = useState<string>(nowLocal)
   const [error, setError] = useState<string | null>(null)
   const [savedCount, setSavedCount] = useState(0)
   const [defaultsApplied, setDefaultsApplied] = useState(false)
@@ -87,15 +86,15 @@ export function MeasurementDialog(props: {
   // Дефолты из последнего замера партии (спека 6.1.4) — в том числе когда
   // диалог открыт прямо из списка, а не из карточки.
   useEffect(() => {
-    if (!existing) void loadFor(batch.id)
-  }, [batch.id, existing, loadFor])
+    void loadFor(batch.id)
+  }, [batch.id, loadFor])
 
   useEffect(() => {
-    if (existing || defaultsApplied || !last) return
+    if (defaultsApplied || !last) return
     if (!instrumentId && last.instrumentId) setInstrumentId(last.instrumentId)
     if (!tempC && last.tempC != null) setTempC(String(last.tempC))
     setDefaultsApplied(true)
-  }, [existing, defaultsApplied, last, instrumentId, tempC])
+  }, [defaultsApplied, last, instrumentId, tempC])
 
   useEffect(() => {
     valueRef.current?.focus()
@@ -122,12 +121,12 @@ export function MeasurementDialog(props: {
           rawValue: value,
           unit,
           tempC: tempC.trim() === '' ? null : Number(tempC),
-          measuredAtUtc: existing?.measuredAtUtc ?? toUtcIso(new Date())
+          measuredAtUtc: measuredAt ? toUtcIso(new Date(measuredAt)) : toUtcIso(new Date())
         },
         buildContext(batch, instrumentId)
       )
     }
-  }, [kind, rawValue, unit, instrumentId, tempC, isHydrometer, batch, existing, instruments])
+  }, [kind, rawValue, unit, instrumentId, tempC, isHydrometer, batch, measuredAt, instruments])
 
   const submit = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault()
@@ -144,14 +143,9 @@ export function MeasurementDialog(props: {
       rawValue: value,
       unit,
       tempC: kind === 'density' && tempC.trim() !== '' ? Number(tempC) : null,
-      measuredAtUtc: existing?.measuredAtUtc ?? toUtcIso(new Date())
+      measuredAtUtc: measuredAt ? toUtcIso(new Date(measuredAt)) : toUtcIso(new Date())
     }
     try {
-      if (existing) {
-        await update(existing.id, batch.id, input)
-        onClose()
-        return
-      }
       await create(input)
       setSavedCount((n) => n + 1)
       setRawValue('')
@@ -163,21 +157,28 @@ export function MeasurementDialog(props: {
   return (
     <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Замер">
       <form className="modal" onSubmit={(e) => void submit(e)}>
-        <h3>{existing ? 'Правка замера' : 'Замер'}</h3>
+        <h3>Замер</h3>
         {savedCount > 0 ? (
           <p className="muted">Сохранено замеров за этот сеанс: {savedCount}</p>
         ) : null}
 
-        {!existing ? (
-          <label>
-            Тип замера
-            <select value={kind} onChange={(e) => setKind(e.target.value as MeasurementKind)}>
-              {Object.entries(KIND_LABELS).map(([v, label]) => (
-                <option key={v} value={v}>{label}</option>
-              ))}
-            </select>
-          </label>
-        ) : null}
+        <label>
+          Дата и время замера
+          <input
+            type="datetime-local"
+            value={measuredAt}
+            onChange={(e) => setMeasuredAt(e.target.value)}
+          />
+        </label>
+
+        <label>
+          Тип замера
+          <select value={kind} onChange={(e) => setKind(e.target.value as MeasurementKind)}>
+            {Object.entries(KIND_LABELS).map(([v, label]) => (
+              <option key={v} value={v}>{label}</option>
+            ))}
+          </select>
+        </label>
 
         {kind === 'density' ? (
           <>
@@ -262,12 +263,8 @@ export function MeasurementDialog(props: {
 
         {error ? <p className="error-text">{error}</p> : null}
         <div className="form-actions">
-          <button type="submit">{existing ? 'Сохранить' : 'Сохранить (Enter)'}</button>
-          {existing ? (
-            <button type="button" onClick={onClose}>Отмена</button>
-          ) : (
-            <button type="button" onClick={onClose}>Закрыть</button>
-          )}
+          <button type="submit">Сохранить (Enter)</button>
+          <button type="button" onClick={onClose}>Закрыть</button>
         </div>
       </form>
     </div>
@@ -281,11 +278,8 @@ export function MeasurementsSection(props: { batch: BatchDto }): ReactElement {
   const loadFor = useMeasurementsStore((s) => s.loadFor)
   const remove = useMeasurementsStore((s) => s.remove)
   const densityUnit = useSettingsStore((s) => s.settings?.densityUnit ?? 'sg')
-  const revisionsByMeasurement = useMeasurementsStore((s) => s.revisionsByMeasurement)
-  const loadRevisions = useMeasurementsStore((s) => s.loadRevisions)
 
   const [dialogOpen, setDialogOpen] = useState(false)
-  const [editing, setEditing] = useState<MeasurementDto | null>(null)
   const [detailId, setDetailId] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
 
@@ -299,13 +293,7 @@ export function MeasurementsSection(props: { batch: BatchDto }): ReactElement {
     <section className="measurements">
       <div className="screen-header">
         <h3>Замеры</h3>
-        <button
-          type="button"
-          onClick={() => {
-            setEditing(null)
-            setDialogOpen(true)
-          }}
-        >
+        <button type="button" onClick={() => setDialogOpen(true)}>
           Замер
         </button>
       </div>
@@ -331,15 +319,6 @@ export function MeasurementsSection(props: { batch: BatchDto }): ReactElement {
               <div className="muted">{m.measuredAtUtc.slice(0, 16).replace('T', ' ')} UTC</div>
             </button>
               <div className="item-actions">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEditing(m)
-                    setDialogOpen(true)
-                  }}
-                >
-                  Правка
-                </button>
                 <button type="button" onClick={() => setConfirmDelete(m.id)}>Удалить</button>
               </div>
             </li>
@@ -353,8 +332,6 @@ export function MeasurementsSection(props: { batch: BatchDto }): ReactElement {
       {detail ? (
         <MeasurementDetail
           measurement={detail}
-          revisions={revisionsByMeasurement[detail.id]}
-          onOpenRevisions={() => void loadRevisions(detail.id)}
           onClose={() => setDetailId(null)}
         />
       ) : null}
@@ -362,46 +339,67 @@ export function MeasurementsSection(props: { batch: BatchDto }): ReactElement {
       {dialogOpen ? (
         <MeasurementDialog
           batch={batch}
-          existing={editing}
-          onClose={() => {
-            setDialogOpen(false)
-            setEditing(null)
-          }}
+          onClose={() => setDialogOpen(false)}
         />
       ) : null}
 
       {confirmDelete ? (
-        <div className="modal-overlay" role="dialog" aria-modal="true">
-          <div className="modal">
-            <h3>Удалить замер?</h3>
-            <p>Снапшот замера сохранится в истории правок партии.</p>
-            <div className="form-actions">
-              <button
-                type="button"
-                className="danger"
-                onClick={() => {
-                  void remove(confirmDelete, batch.id)
-                  setConfirmDelete(null)
-                }}
-              >
-                Удалить
-              </button>
-              <button type="button" onClick={() => setConfirmDelete(null)}>Отмена</button>
-            </div>
-          </div>
-        </div>
+        <DeleteMeasurementDialog
+          onClose={() => setConfirmDelete(null)}
+          onConfirm={() => {
+            void remove(confirmDelete, batch.id)
+            setConfirmDelete(null)
+          }}
+        />
       ) : null}
     </section>
   )
 }
 
-function MeasurementDetail(props: {
-  measurement: MeasurementDto
-  revisions?: Array<{ id: string; action: string; snapshot: unknown; revisedAtUtc: string }>
-  onOpenRevisions(): void
+/** Двойное подтверждение удаления: чекбокс осознанности + кнопка. */
+function DeleteMeasurementDialog(props: {
+  onConfirm(): void
   onClose(): void
 }): ReactElement {
-  const { measurement: m, revisions, onOpenRevisions, onClose } = props
+  const [checked, setChecked] = useState(false)
+  return (
+    <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Удаление замера">
+      <div className="modal">
+        <h3>Удалить замер?</h3>
+        <p>
+          Замер исчезнет из графика и расчётов. Снапшот сохранится в выгрузке
+          партии для аудита.
+        </p>
+        <label className="confirm-checkbox">
+          <input
+            type="checkbox"
+            checked={checked}
+            onChange={(e) => setChecked(e.target.checked)}
+          />
+          Я точно понимаю, что делаю
+        </label>
+        <div className="form-actions">
+          <button
+            type="button"
+            className="danger"
+            disabled={!checked}
+            title={checked ? undefined : 'Сначала подтвердите осознанность'}
+            onClick={props.onConfirm}
+          >
+            Удалить
+          </button>
+          <button type="button" onClick={props.onClose}>Отмена</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function MeasurementDetail(props: {
+  measurement: MeasurementDto
+  onClose(): void
+}): ReactElement {
+  const { measurement: m, onClose } = props
   const densityUnit = useSettingsStore((s) => s.settings?.densityUnit ?? 'sg')
   const steps = (m.corrections as { steps?: Array<{ type: string; input: number; output: number; note?: string }>; warnings?: string[] }).steps ?? []
   const warnings = (m.corrections as { warnings?: string[] }).warnings ?? []
@@ -451,24 +449,6 @@ function MeasurementDetail(props: {
           <p key={w} className="error-text">⚠ {w}</p>
         ))}
 
-        <h4>
-          История правок{' '}
-          <button type="button" onClick={onOpenRevisions}>Показать</button>
-        </h4>
-        <ul>
-          {(revisions ?? []).map((r) => (
-            <li key={r.id}>
-              {r.action === 'update' ? 'Правка' : 'Удаление'} — {r.revisedAtUtc.slice(0, 16).replace('T', ' ')} UTC
-              {' '}(
-              {r.action === 'delete'
-                ? `было: ${(r.snapshot as { rawValue?: number }).rawValue}`
-                : `rawValue до: ${(r.snapshot as { rawValue?: number }).rawValue}`}
-              )
-            </li>
-          ))}
-          {revisions && revisions.length === 0 ? <li className="muted">Правок не было</li> : null}
-        </ul>
-
         <div className="form-actions">
           <button type="button" onClick={onClose}>Закрыть</button>
         </div>
@@ -485,20 +465,10 @@ export function MeasurementDetailModal(props: {
   measurement: MeasurementDto
   onClose(): void
 }): ReactElement {
-  const { measurement, onClose } = props
-  const revisions = useMeasurementsStore((s) => s.revisionsByMeasurement[measurement.id])
-  const loadRevisions = useMeasurementsStore((s) => s.loadRevisions)
-
-  useEffect(() => {
-    void loadRevisions(measurement.id)
-  }, [measurement.id, loadRevisions])
-
   return (
     <MeasurementDetail
-      measurement={measurement}
-      revisions={revisions}
-      onOpenRevisions={() => void loadRevisions(measurement.id)}
-      onClose={onClose}
+      measurement={props.measurement}
+      onClose={props.onClose}
     />
   )
 }

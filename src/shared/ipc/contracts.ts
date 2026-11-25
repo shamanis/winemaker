@@ -312,9 +312,6 @@ export const measurementCreateSchema = measurementBaseSchema.superRefine((input,
   })
 export type MeasurementCreateInput = z.infer<typeof measurementBaseSchema>
 
-export const measurementPatchSchema = measurementBaseSchema.partial()
-export type MeasurementPatch = z.infer<typeof measurementPatchSchema>
-
 export const measurementRevisionDtoSchema = z.object({
   id: z.string(),
   measurementId: z.string(),
@@ -515,11 +512,6 @@ export const channels = {
     name: 'measurements:create',
     request: measurementCreateSchema,
     response: z.object({ item: measurementDtoSchema })
-  }),
-  measurementsUpdate: defineChannel({
-    name: 'measurements:update',
-    request: z.object({ id: z.string().min(1), patch: measurementPatchSchema }),
-    response: z.object({ item: measurementDtoSchema.nullable() })
   }),
   measurementsDelete: defineChannel({
     name: 'measurements:delete',

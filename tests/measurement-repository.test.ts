@@ -96,32 +96,7 @@ describe('MeasurementRepository', () => {
     expect(stored.warnings).toHaveLength(1) // нет калибровочной пары
   })
 
-  it('update: пишет ревизию и пересчитывает correctedSg', () => {
-    const handle = openMemory()
-    const { batches, instruments, measurements } = setup(handle)
-    const batch = batches.create(BATCH_INPUT)
-    const refr = instruments.create(REFRACTOMETER)
-    const m = measurements.create({
-      batchId: batch.batch.id,
-      kind: 'density',
-      instrumentId: refr.id,
-      rawValue: 10,
-      unit: 'brix',
-      measuredAtUtc: '2026-11-26T11:00:00.000Z'
-    })
-
-    const updated = measurements.update(m.id, { rawValue: 12 })
-    expect(updated?.rawValue).toBe(12)
-    expect(updated?.correctedSg).not.toBeCloseTo(m.correctedSg as number, 6)
-
-    const revisions = measurements.listRevisions(m.id)
-    expect(revisions).toHaveLength(1)
-    expect(revisions[0]?.action).toBe('update')
-    const snap = revisions[0]?.snapshot as { rawValue: number }
-    expect(snap.rawValue).toBe(10) // снапшот ДО правки
-  })
-
-  it('delete: снапшот action=delete, запись удалена', () => {
+  it('delete: снапшот action=delete переживает удаление записи', () => {
     const handle = openMemory()
     const { batches, measurements } = setup(handle)
     const batch = batches.create(BATCH_INPUT)
@@ -135,8 +110,12 @@ describe('MeasurementRepository', () => {
     })
     measurements.delete(m.id)
     expect(measurements.get(m.id)).toBeUndefined()
+    // Ревизия удаления привязана к партии и доступна после удаления замера
     const revisions = measurements.listRevisions(m.id)
+    expect(revisions).toHaveLength(1)
     expect(revisions[0]?.action).toBe('delete')
+    const snap = revisions[0]?.snapshot as { rawValue: number }
+    expect(snap.rawValue).toBe(3.4)
   })
 
   it('удаление партии каскадно удаляет замеры и ревизии', () => {
@@ -152,7 +131,6 @@ describe('MeasurementRepository', () => {
       unit: 'brix',
       measuredAtUtc: '2026-11-26T11:00:00.000Z'
     })
-    measurements.update(m.id, { rawValue: 11 })
     batches.delete(batch.batch.id)
     const count = handle.sqlite.prepare('SELECT COUNT(*) AS n FROM measurements').get() as { n: number }
     const rev = handle.sqlite.prepare('SELECT COUNT(*) AS n FROM measurement_revisions').get() as { n: number }

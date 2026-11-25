@@ -252,20 +252,10 @@ export function registerIpcHandlers(ctx: IpcContext): void {
     channels.measurementsCreate,
     (input) => ({ item: ctx.measurements.create(input) })
   )
-  handleChannel<
-    { id: string; patch: Parameters<MeasurementRepository['update']>[1] },
-    { item: MeasurementRow | null }
-  >(channels.measurementsUpdate, ({ id, patch }) => ({
-    item: ctx.measurements.update(id, patch) ?? null
-  }))
   handleChannel<{ id: string }, { ok: boolean }>(channels.measurementsDelete, ({ id }) => {
     ctx.measurements.delete(id)
     return { ok: true }
   })
-  handleChannel<{ id: string }, { items: MeasurementRevisionRow[] }>(
-    channels.measurementsRevisions,
-    ({ id }) => ({ items: ctx.measurements.listRevisions(id) })
-  )
 
   /* Настройки: один ключ JSON в app_state (design D4) */
   handleChannel<{}, { settings: typeof DEFAULT_SETTINGS | Record<string, unknown> }>(

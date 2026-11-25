@@ -85,11 +85,10 @@ describe('buildExportPayload (data-portability)', () => {
       batchId: batch.batch.id, kind: 'density', instrumentId: refr.id,
       rawValue: 10, unit: 'brix', measuredAtUtc: '2026-11-26T12:00:00.000Z'
     })
-    const m2 = measurements.create({
+    measurements.create({
       batchId: batch.batch.id, kind: 'ph', instrumentId: null,
       rawValue: 3.4, unit: 'sg', measuredAtUtc: '2026-11-26T13:00:00.000Z'
     })
-    measurements.update(m2.id, { rawValue: 3.5 })
     operations.create({ batchId: batch.batch.id, kind: 'rack', atUtc: '2026-11-27T10:00:00.000Z' })
 
     const full = batches.get(batch.batch.id)!
@@ -113,7 +112,7 @@ describe('buildExportPayload (data-portability)', () => {
     const density = payload.measurements.find((m) => m.kind === 'density')
     expect(density?.rawValue).toBe(10)
     expect((density?.corrections as { steps: unknown[] }).steps.length).toBeGreaterThan(0)
-    expect(payload.measurementRevisions).toHaveLength(1) // правка pH
+    expect(payload.measurementRevisions).toHaveLength(0) // удалений не было
     expect(payload.operations).toHaveLength(1)
     expect(payload.statusHistory).toHaveLength(1) // постановка
 

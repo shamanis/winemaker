@@ -14,8 +14,6 @@ import {
   type InstrumentInput,
   type MeasurementCreateInput,
   type MeasurementDto,
-  type MeasurementPatch,
-  type MeasurementRevisionDto,
   type OperationDto,
   type OperationInput,
   type StrainDto,
@@ -147,16 +145,9 @@ export function createApiClient(transport: WinemakerTransport) {
         (await invokeChannel(transport, 'measurementsListByBatch', { batchId })).items,
       create: async (input: MeasurementCreateInput): Promise<MeasurementDto> =>
         (await invokeChannel(transport, 'measurementsCreate', input)).item,
-      update: async (
-        id: string,
-        patch: MeasurementPatch
-      ): Promise<MeasurementDto | null> =>
-        (await invokeChannel(transport, 'measurementsUpdate', { id, patch })).item,
       remove: async (id: string): Promise<void> => {
         await invokeChannel(transport, 'measurementsDelete', { id })
-      },
-      revisions: async (id: string): Promise<MeasurementRevisionDto[]> =>
-        (await invokeChannel(transport, 'measurementsRevisions', { id })).items
+      }
     },
 
     calibrate: async (
