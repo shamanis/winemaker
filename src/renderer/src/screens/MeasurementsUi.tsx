@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactElement } from 'react'
 import type { BatchDto, MeasurementDto, MeasurementKind } from '@shared/ipc/contracts'
 import { resolveMeasurement, type PipelineContext } from '@shared/calculations/pipeline'
+import { formatDensity } from '@shared/calculations/analysis'
 import { toUtcIso } from '@shared/time/utc'
 import { useCatalogsStore, INSTRUMENT_TYPE_LABELS } from '../store/catalogs-store'
 import { useSettingsStore } from '../store/settings-store'
@@ -235,11 +236,8 @@ export function MeasurementDialog(props: {
                   <p className="muted">
                     Скорректированное значение:{' '}
                     <strong>
-                      {preview.resolved.correctedSg?.toFixed(4)} SG
+                      {formatDensity(preview.resolved.correctedSg, unit)}
                     </strong>
-                    {preview.resolved.correctedBrix != null
-                      ? ` (Bf ${preview.resolved.correctedBrix.toFixed(2)} °Bx)`
-                      : ''}
                   </p>
                   {preview.resolved.warnings.map((w) => (
                     <p key={w} className="error-text">⚠ {w}</p>
@@ -282,6 +280,7 @@ export function MeasurementsSection(props: { batch: BatchDto }): ReactElement {
   const list = useMeasurementsStore((s) => s.byBatch[batch.id])
   const loadFor = useMeasurementsStore((s) => s.loadFor)
   const remove = useMeasurementsStore((s) => s.remove)
+  const densityUnit = useSettingsStore((s) => s.settings?.densityUnit ?? 'sg')
   const revisionsByMeasurement = useMeasurementsStore((s) => s.revisionsByMeasurement)
   const loadRevisions = useMeasurementsStore((s) => s.loadRevisions)
 
@@ -316,21 +315,21 @@ export function MeasurementsSection(props: { batch: BatchDto }): ReactElement {
           const warnings = (m.corrections as { warnings?: string[] }).warnings ?? []
           return (
             <li key={m.id}>
-              <button
-                type="button"
-                className="item-open"
-                onClick={() => setDetailId(m.id)}
-                title="Открыть карточку замера"
-              >
-                <div>
-                  <strong>{KIND_LABELS[m.kind]}</strong>:{' '}
-                  {m.kind === 'density'
-                    ? `${m.rawValue} ${m.unit === 'brix' ? '°Bx' : 'SG'} → ${m.correctedSg?.toFixed(4)} SG`
-                    : `${m.rawValue} ${m.kind === 'temperature' ? '°C' : 'pH'}`}
-                  {warnings.length > 0 ? ' ⚠' : ''}
-                </div>
-                <div className="muted">{m.measuredAtUtc.slice(0, 16).replace('T', ' ')} UTC</div>
-              </button>
+            <button
+              type="button"
+              className="item-open"
+              onClick={() => setDetailId(m.id)}
+              title="Открыть карточку замера"
+            >
+              <div>
+                <strong>{KIND_LABELS[m.kind]}</strong>:{' '}
+                {m.kind === 'density'
+                  ? `${m.rawValue} ${m.unit === 'brix' ? '°Bx' : 'SG'} → ${formatDensity(m.correctedSg, densityUnit)}`
+                  : `${m.rawValue} ${m.kind === 'temperature' ? '°C' : 'pH'}`}
+                {warnings.length > 0 ? ' ⚠' : ''}
+              </div>
+              <div className="muted">{m.measuredAtUtc.slice(0, 16).replace('T', ' ')} UTC</div>
+            </button>
               <div className="item-actions">
                 <button
                   type="button"
@@ -403,6 +402,7 @@ function MeasurementDetail(props: {
   onClose(): void
 }): ReactElement {
   const { measurement: m, revisions, onOpenRevisions, onClose } = props
+  const densityUnit = useSettingsStore((s) => s.settings?.densityUnit ?? 'sg')
   const steps = (m.corrections as { steps?: Array<{ type: string; input: number; output: number; note?: string }>; warnings?: string[] }).steps ?? []
   const warnings = (m.corrections as { warnings?: string[] }).warnings ?? []
   const instrument = useCatalogsStore((s) => s.instruments.find((i) => i.id === m.instrumentId))
@@ -428,8 +428,8 @@ function MeasurementDetail(props: {
               ) : null}
               <dt>Скорректировано</dt>
               <dd>
-                {m.correctedSg?.toFixed(4)} SG
-                {m.correctedBrix != null ? ` (Bf ${m.correctedBrix.toFixed(2)} °Bx)` : ''}
+                {formatDensity(m.correctedSg, densityUnit)}
+                {m.correctedBrix != null ? ` · WCF-показание ${m.correctedBrix.toFixed(2)} °Bx` : ''}
               </dd>
             </>
           ) : null}

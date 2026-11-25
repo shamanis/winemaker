@@ -1,6 +1,7 @@
 import { useEffect, useRef, type ReactElement } from 'react'
 import { useAppStore } from './store/app-store'
 import { useUiStore, TAB_ORDER, type ScreenTab } from './store/ui-store'
+import { useSettingsStore } from './store/settings-store'
 import { BatchesScreen } from './screens/BatchesScreen'
 import { CatalogsScreen } from './screens/CatalogsScreen'
 import { SettingsScreen } from './screens/SettingsScreen'
@@ -30,6 +31,8 @@ export function App(): ReactElement {
   useEffect(() => {
     void bootstrap()
     void initUi()
+    // Единицы плотности нужны на всех экранах (форматтеры) — грузим сразу.
+    void useSettingsStore.getState().init()
   }, [bootstrap, initUi])
 
   useHotkeys({
