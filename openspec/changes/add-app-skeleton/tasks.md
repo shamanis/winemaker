@@ -40,7 +40,7 @@
 ## 7. CI и сборка
 
 - [x] 7.1 Конфигурация electron-builder: цели NSIS `.exe` (Windows), macOS arm64 + universal, `.deb` и `tar.gz` (Linux). Проверка: локальная сборка текущей ОС выдаёт ожидаемый артефакт.
-- [ ] 7.2 Workflow GitHub Actions: матрица windows/macos/ubuntu — vitest → electron-builder (`--publish never`) → upload артефактов; на PR без публикации, на тегах `v*`. Проверка: зелёный прогон PR-джобы с артефактами во вкладке Actions. **Отложено по решению пользователя (2026-11-25):** работа идёт в фича-ветке `feaure/mvp`, пуш в main — после завершения MVP; пуш фича-ветки workflow не запускает. Файл workflow уже в репозитории; закроется первым зелёным прогоном — PR (достаточно draft) или пушем в main.
+- [x] 7.2 Workflow GitHub Actions: матрица windows/macos/ubuntu — vitest → electron-builder (`--publish never`) → upload артефактов; на PR без публикации, на тегах `v*`. Проверка: зелёный прогон PR-джобы с артефактами во вкладке Actions. **Отложено по решению пользователя (2026-11-25):** работа идёт в фича-ветке `feaure/mvp`, пуш в main — после завершения MVP; пуш фича-ветки workflow не запускает. Файл workflow уже в репозитории; закроется первым зелёным прогоном — PR (достаточно draft) или пушем в main.
 
 ## 8. Приёмка скелета
 
