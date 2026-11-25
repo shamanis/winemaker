@@ -5,6 +5,7 @@ import { useOperationsStore, OPERATION_KIND_LABELS } from '../store/operations-s
 import { useMeasurementsStore } from '../store/measurements-store'
 import { useBatchesStore } from '../store/batches-store'
 import { doseUnitLabel } from '../ui/composition'
+import { Modal } from '../ui/Modal'
 
 const KIND_LABELS_MEASUREMENT: Record<string, string> = {
   density: 'Плотность',
@@ -167,15 +168,12 @@ export function JournalSection(props: { batch: BatchDto }): ReactElement {
       ) : null}
 
       {confirmDelete ? (
-        <div className="modal-overlay" role="dialog" aria-modal="true">
-          <div className="modal">
-            <h3>Удалить операцию?</h3>
-            <div className="form-actions">
-              <button type="button" className="danger" onClick={() => deleteOp(confirmDelete)}>Удалить</button>
-              <button type="button" onClick={() => setConfirmDelete(null)}>Отмена</button>
-            </div>
+        <Modal title="Удалить операцию?" onClose={() => setConfirmDelete(null)}>
+          <div className="form-actions">
+            <button type="button" className="danger" onClick={() => deleteOp(confirmDelete)}>Удалить</button>
+            <button type="button" onClick={() => setConfirmDelete(null)}>Отмена</button>
           </div>
-        </div>
+        </Modal>
       ) : null}
     </section>
   )
@@ -215,9 +213,8 @@ function OperationDialog(props: {
   }
 
   return (
-    <div className="modal-overlay" role="dialog" aria-modal="true">
-      <form className="modal" onSubmit={(e) => void submit(e)}>
-        <h3>{existing ? 'Правка операции' : 'Новая операция'}</h3>
+    <Modal title={existing ? 'Правка операции' : 'Новая операция'} onClose={props.onClose}>
+      <form onSubmit={(e) => void submit(e)}>
         <label>
           Операция
           <select value={kind} onChange={(e) => setKind(e.target.value as OperationKind)}>
@@ -239,12 +236,12 @@ function OperationDialog(props: {
           <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} />
         </label>
         {error ? <p className="error-text">{error}</p> : null}
-        <div className="form-actions">
-          <button type="submit">Сохранить</button>
-          <button type="button" onClick={props.onClose}>Отмена</button>
-        </div>
-      </form>
-    </div>
+      <div className="form-actions">
+        <button type="submit">Сохранить</button>
+        <button type="button" onClick={props.onClose}>Отмена</button>
+      </div>
+    </form>
+    </Modal>
   )
 }
 

@@ -1,6 +1,7 @@
 import { useState, type FormEvent, type ReactElement } from 'react'
 import type { AdditionInput, AdditionKind, StrainDto, YeastInput } from '@shared/ipc/contracts'
 import { api } from '../api'
+import { Modal } from './Modal'
 
 /**
  * Редакторы состава партии (спека batch-management 1.3–1.4): дрожжи
@@ -385,20 +386,19 @@ export function CompositionDialog(props: {
   }
 
   return (
-    <div className="modal-overlay" role="dialog" aria-modal="true">
-      <form className="modal modal-wide" onSubmit={(e) => void submit(e)}>
-        <h3>{props.title}</h3>
+    <Modal title={props.title} wide onClose={props.onClose}>
+      <form onSubmit={(e) => void submit(e)}>
         {props.kind === 'yeast' ? (
           <YeastRowsEditor rows={yeastRows} onChange={setYeastRows} strains={props.strains} />
         ) : (
           <AdditionRowsEditor rows={additionRows} onChange={setAdditionRows} />
         )}
         {error ? <p className="error-text">{error}</p> : null}
-        <div className="form-actions">
-          <button type="submit" disabled={saving}>{saving ? 'Сохранение…' : 'Сохранить'}</button>
-          <button type="button" onClick={props.onClose}>Отмена</button>
-        </div>
-      </form>
-    </div>
+      <div className="form-actions">
+        <button type="submit" disabled={saving}>{saving ? 'Сохранение…' : 'Сохранить'}</button>
+        <button type="button" onClick={props.onClose}>Отмена</button>
+      </div>
+    </form>
+    </Modal>
   )
 }

@@ -4,6 +4,7 @@ import { resolveMeasurement, type PipelineContext } from '@shared/calculations/p
 import { formatDensity } from '@shared/calculations/analysis'
 import { toUtcIso } from '@shared/time/utc'
 import { useCatalogsStore, INSTRUMENT_TYPE_LABELS } from '../store/catalogs-store'
+import { Modal } from '../ui/Modal'
 import { useSettingsStore } from '../store/settings-store'
 import {
   useMeasurementsStore,
@@ -155,9 +156,8 @@ export function MeasurementDialog(props: {
   }
 
   return (
-    <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Замер">
-      <form className="modal" onSubmit={(e) => void submit(e)}>
-        <h3>Замер</h3>
+    <Modal title="Замер" onClose={onClose}>
+      <form onSubmit={(e) => void submit(e)}>
         {savedCount > 0 ? (
           <p className="muted">Сохранено замеров за этот сеанс: {savedCount}</p>
         ) : null}
@@ -262,12 +262,12 @@ export function MeasurementDialog(props: {
         )}
 
         {error ? <p className="error-text">{error}</p> : null}
-        <div className="form-actions">
-          <button type="submit">Сохранить (Enter)</button>
-          <button type="button" onClick={onClose}>Закрыть</button>
-        </div>
-      </form>
-    </div>
+      <div className="form-actions">
+        <button type="submit">Сохранить (Enter)</button>
+        <button type="button" onClick={onClose}>Закрыть</button>
+      </div>
+    </form>
+    </Modal>
   )
 }
 
@@ -363,35 +363,32 @@ function DeleteMeasurementDialog(props: {
 }): ReactElement {
   const [checked, setChecked] = useState(false)
   return (
-    <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Удаление замера">
-      <div className="modal">
-        <h3>Удалить замер?</h3>
-        <p>
-          Замер исчезнет из графика и расчётов. Снапшот сохранится в выгрузке
-          партии для аудита.
-        </p>
-        <label className="confirm-checkbox">
-          <input
-            type="checkbox"
-            checked={checked}
-            onChange={(e) => setChecked(e.target.checked)}
-          />
-          Я точно понимаю, что делаю
-        </label>
-        <div className="form-actions">
-          <button
-            type="button"
-            className="danger"
-            disabled={!checked}
-            title={checked ? undefined : 'Сначала подтвердите осознанность'}
-            onClick={props.onConfirm}
-          >
-            Удалить
-          </button>
-          <button type="button" onClick={props.onClose}>Отмена</button>
-        </div>
+    <Modal title="Удалить замер?" onClose={props.onClose}>
+      <p>
+        Замер исчезнет из графика и расчётов. Снапшот сохранится в выгрузке
+        партии для аудита.
+      </p>
+      <label className="confirm-checkbox">
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={(e) => setChecked(e.target.checked)}
+        />
+        Я точно понимаю, что делаю
+      </label>
+      <div className="form-actions">
+        <button
+          type="button"
+          className="danger"
+          disabled={!checked}
+          title={checked ? undefined : 'Сначала подтвердите осознанность'}
+          onClick={props.onConfirm}
+        >
+          Удалить
+        </button>
+        <button type="button" onClick={props.onClose}>Отмена</button>
       </div>
-    </div>
+    </Modal>
   )
 }
 
@@ -406,9 +403,7 @@ function MeasurementDetail(props: {
   const instrument = useCatalogsStore((s) => s.instruments.find((i) => i.id === m.instrumentId))
 
   return (
-    <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Карточка замера">
-      <div className="modal">
-        <h3>Замер — {KIND_LABELS[m.kind]}</h3>
+    <Modal title={`Замер — ${KIND_LABELS[m.kind]}`} onClose={onClose}>
         <dl className="detail-list">
           <dt>Сырое значение</dt>
           <dd>
@@ -449,11 +444,10 @@ function MeasurementDetail(props: {
           <p key={w} className="error-text">⚠ {w}</p>
         ))}
 
-        <div className="form-actions">
-          <button type="button" onClick={onClose}>Закрыть</button>
-        </div>
+      <div className="form-actions">
+        <button type="button" onClick={onClose}>Закрыть</button>
       </div>
-    </div>
+    </Modal>
   )
 }
 

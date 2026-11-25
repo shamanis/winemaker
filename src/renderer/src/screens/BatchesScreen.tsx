@@ -39,6 +39,7 @@ import {
 import { DensityChart } from './DensityChart'
 import { JournalSection } from './JournalSection'
 import { Term } from '../ui/Term'
+import { Modal } from '../ui/Modal'
 
 /**
  * Экран партий (спека batch-management): список активных и архивных,
@@ -717,9 +718,8 @@ function ArchiveDialog(props: {
   }
 
   return (
-    <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Архивация партии">
-      <form className="modal" onSubmit={submit}>
-        <h3>Архивировать партию</h3>
+    <Modal title="Архивировать партию" onClose={props.onCancel}>
+      <form onSubmit={submit}>
         <p className="muted">Укажите итоговые характеристики — они сохранятся вместе с историей.</p>
         <label>
           Финальная плотность (SG)
@@ -733,12 +733,12 @@ function ArchiveDialog(props: {
           Органолептические заметки
           <textarea name="tastingNotes" rows={3} />
         </label>
-        <div className="form-actions">
-          <button type="submit">Архивировать</button>
-          <button type="button" onClick={props.onCancel}>Отмена</button>
-        </div>
-      </form>
-    </div>
+      <div className="form-actions">
+        <button type="submit">Архивировать</button>
+        <button type="button" onClick={props.onCancel}>Отмена</button>
+      </div>
+    </form>
+    </Modal>
   )
 }
 
@@ -750,16 +750,13 @@ function ConfirmDialog(props: {
   onCancel(): void
 }): ReactElement {
   return (
-    <div className="modal-overlay" role="dialog" aria-modal="true" aria-label={props.title}>
-      <div className="modal">
-        <h3>{props.title}</h3>
-        <p>{props.text}</p>
-        <div className="form-actions">
-          <button type="button" className="danger" onClick={props.onConfirm}>{props.confirmLabel}</button>
-          <button type="button" onClick={props.onCancel}>Отмена</button>
-        </div>
+    <Modal title={props.title} onClose={props.onCancel}>
+      <p>{props.text}</p>
+      <div className="form-actions">
+        <button type="button" className="danger" onClick={props.onConfirm}>{props.confirmLabel}</button>
+        <button type="button" onClick={props.onCancel}>Отмена</button>
       </div>
-    </div>
+    </Modal>
   )
 }
 
