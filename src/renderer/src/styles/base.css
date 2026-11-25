@@ -161,6 +161,9 @@ body {
 /* Экраны и списки */
 .screen {
   width: 100%;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
 }
 
 .screen-header {
@@ -220,14 +223,30 @@ body {
   flex-shrink: 0;
 }
 
-.empty-line {
-  flex-direction: column;
-  text-align: center;
-  padding: 1.5rem !important;
-  background: var(--color-bg-muted);
+/* Пустое состояние: по центру области на любом размере окна */
+.empty-screen {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 50vh;
 }
 
-.empty-line p {
+.empty-card {
+  max-width: 26rem;
+  text-align: center;
+  background: var(--color-bg-muted);
+  border: 1px solid var(--color-border);
+  border-radius: 0.75rem;
+  padding: 2rem 1.5rem;
+}
+
+.empty-card h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.25rem;
+}
+
+.empty-card p {
   color: var(--color-text-muted);
   margin: 0.375rem 0 0.875rem;
 }

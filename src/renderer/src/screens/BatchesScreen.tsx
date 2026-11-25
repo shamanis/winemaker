@@ -109,13 +109,17 @@ export function BatchesScreen(): ReactElement {
           onMeasure={(id) => setQuickMeasureBatchId(id)}
         />
       ) : (
-        <ul className="item-list">
-          <li className="empty-line">
-            <strong>Поставьте первую партию</strong>
-            <p>Замеры, операции и заметки будут собираться в единый журнал этой партии.</p>
+        /* Нет партий: приглашение по центру области (ui-shell 7.2.1) */
+        <div className="empty-screen">
+          <div className="empty-card">
+            <h2>Поставьте первую партию</h2>
+            <p>
+              Замеры, операции и заметки будут собираться в единый журнал
+              этой партии.
+            </p>
             <button type="button" onClick={() => setCreating(true)}>Новая партия</button>
-          </li>
-        </ul>
+          </div>
+        </div>
       )}
 
       {archived.length > 0 ? (
