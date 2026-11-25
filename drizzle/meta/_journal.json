@@ -15,6 +15,13 @@
       "when": 1795606055186,
       "tag": "0001_milky_leader",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1795612131641,
+      "tag": "0002_lean_selene",
+      "breakpoints": true
     }
   ]
 }

@@ -5,6 +5,7 @@ import { toUtcIso } from '@shared/time/utc'
 import { useBatchesStore, STATUS_LABELS, daysFromStart } from '../store/batches-store'
 import { useCatalogsStore, INSTRUMENT_TYPE_LABELS } from '../store/catalogs-store'
 import { useSettingsStore } from '../store/settings-store'
+import { MeasurementsSection, MeasurementDialog } from './MeasurementsUi'
 
 /**
  * Экран партий (спека batch-management): список активных и архивных,
@@ -23,6 +24,8 @@ export function BatchesScreen(): ReactElement {
 
   const [creating, setCreating] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
+  /** Партия для быстрого ввода замера со списка (≤3 действий, спека 6.1.1). */
+  const [quickMeasureBatchId, setQuickMeasureBatchId] = useState<string | null>(null)
 
   useEffect(() => {
     void init()
@@ -31,6 +34,10 @@ export function BatchesScreen(): ReactElement {
   if (!loaded) {
     return <section className="screen"><p className="muted">Загрузка партий…</p></section>
   }
+
+  const quickMeasureBatch = quickMeasureBatchId
+    ? [...active, ...archived].find((b) => b.id === quickMeasureBatchId) ?? null
+    : null
 
   if (selected) {
     return (
@@ -55,7 +62,26 @@ export function BatchesScreen(): ReactElement {
 
       <ul className="item-list">
         {active.map((batch) => (
-          <BatchListItem key={batch.id} batch={batch} onOpen={() => void select(batch.id)} />
+          <li key={batch.id}>
+            <button type="button" className="item-open" onClick={() => void select(batch.id)}>
+              <div>
+                <strong>{batch.title}</strong> — {STATUS_LABELS[batch.status]}
+              </div>
+              <div className="muted">
+                {/* Текущая плотность появится с замерами; «Замер» — быстрый ввод */}
+                Плотность: — · {daysFromStart(batch.startDateUtc)} дн. от постановки
+              </div>
+            </button>
+            <div className="item-actions">
+              <button
+                type="button"
+                title="Быстрый замер плотности"
+                onClick={() => setQuickMeasureBatchId(batch.id)}
+              >
+                Замер
+              </button>
+            </div>
+          </li>
         ))}
         {active.length === 0 ? (
           <li className="empty-line">
@@ -87,6 +113,13 @@ export function BatchesScreen(): ReactElement {
             setConfirmDelete(null)
           }}
           onCancel={() => setConfirmDelete(null)}
+        />
+      ) : null}
+
+      {quickMeasureBatch ? (
+        <MeasurementDialog
+          batch={quickMeasureBatch}
+          onClose={() => setQuickMeasureBatchId(null)}
         />
       ) : null}
     </section>
@@ -406,6 +439,10 @@ function BatchCard(props: { full: BatchFullDto; onBack(): void; onDelete(): void
             <dd>{batch.finalResult.tastingNotes ?? '—'}</dd>
           </dl>
         </div>
+      ) : null}
+
+      {!isArchived ? (
+        <MeasurementsSection batch={batch} />
       ) : null}
 
       {archiving ? (

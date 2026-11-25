@@ -3,9 +3,17 @@ import { randomUUID } from 'node:crypto'
 import { instruments, yeastStrains, type InstrumentRow, type NewInstrumentRow, type YeastStrainRow, type NewYeastStrainRow } from '../db/schema'
 import type { AppDatabase } from '../db/database'
 import { nowUtcIso } from '../../shared/time/utc'
+import { computePersonalWcf } from '../../shared/calculations/correction'
 
 /** markDirty планировщика бэкапов — на каждую мутацию. */
 export type MarkDirty = () => void
+
+export interface CalibrationPair {
+  refrBrix: number
+  hydrometerSg: number
+  wcf: number
+  atUtc: string
+}
 
 /** Репозиторий справочника приборов (design D3). */
 export class InstrumentRepository {
@@ -44,6 +52,37 @@ export class InstrumentRepository {
   delete(id: string): void {
     this.db.delete(instruments).where(eq(instruments.id, id)).run()
     this.markDirty()
+  }
+
+  /**
+   * Одноразовая калибровка по паре «рефрактометр — ареометр» (спека 2.6):
+   * вычисляет персональный WCF и фиксирует пару в карточке прибора.
+   */
+  calibrate(
+    instrumentId: string,
+    refrBrix: number,
+    hydrometerSg: number
+  ): { instrument: InstrumentRow; wcf: number } {
+    const instrument = this.get(instrumentId)
+    if (!instrument) throw new Error('Instrument not found')
+    if (!instrument.type.startsWith('refractometer')) {
+      throw new Error('Calibration pair applies to a refractometer')
+    }
+    const wcf = computePersonalWcf(refrBrix, hydrometerSg)
+    const pair: CalibrationPair = {
+      refrBrix,
+      hydrometerSg,
+      wcf,
+      atUtc: nowUtcIso()
+    }
+    const updated = this.db
+      .update(instruments)
+      .set({ wcf, calibrationPair: pair, updatedAtUtc: nowUtcIso() })
+      .where(eq(instruments.id, instrumentId))
+      .returning()
+      .get()
+    if (updated) this.markDirty()
+    return { instrument: updated as InstrumentRow, wcf }
   }
 }
 

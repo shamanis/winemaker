@@ -24,6 +24,10 @@ export const instruments = sqliteTable('instruments', {
   type: text('type').notNull(),
   wcf: real('wcf'),
   calibrationOffsetSg: real('calibration_offset_sg'),
+  /** Калибровочная температура прибора T_кал, °C (vision; по умолчанию 20). */
+  calibrationTempC: real('calibration_temp_c'),
+  /** Калибровочная пара «рефрактометр — ареометр» + вычисленный WCF. */
+  calibrationPair: text('calibration_pair', { mode: 'json' }),
   createdAtUtc: text('created_at_utc').notNull(),
   updatedAtUtc: text('updated_at_utc').notNull()
 })
@@ -125,3 +129,53 @@ export const batchStatusHistory = sqliteTable('batch_status_history', {
 
 export type BatchStatusHistoryRow = typeof batchStatusHistory.$inferSelect
 export type NewBatchStatusHistoryRow = typeof batchStatusHistory.$inferInsert
+
+/**
+ * Замер партии: сырое значение + прибор + канонический скорректированный SG
+ * и полный след пересчёта (спека measurement-correction).
+ */
+export const measurements = sqliteTable('measurements', {
+  id: text('id').primaryKey(),
+  batchId: text('batch_id')
+    .notNull()
+    .references(() => batches.id, { onDelete: 'cascade' }),
+  /** 'density' | 'temperature' | 'ph' */
+  kind: text('kind').notNull(),
+  instrumentId: text('instrument_id').references(() => instruments.id, {
+    onDelete: 'set null'
+  }),
+  rawValue: real('raw_value').notNull(),
+  /** 'sg' | 'brix' — только для density. */
+  unit: text('unit').notNull(),
+  /** Температура сусла в момент замера, °C. */
+  tempC: real('temp_c'),
+  /** Каноническое значение для всех расчётов (спека 2.10). */
+  correctedSg: real('corrected_sg'),
+  correctedBrix: real('corrected_brix'),
+  /** Полный след пересчёта: шаги [{type, input, output, note}] + warnings. */
+  corrections: text('corrections', { mode: 'json' }).notNull(),
+  measuredAtUtc: text('measured_at_utc').notNull(),
+  notes: text('notes'),
+  createdAtUtc: text('created_at_utc').notNull(),
+  updatedAtUtc: text('updated_at_utc').notNull()
+})
+
+export type MeasurementRow = typeof measurements.$inferSelect
+export type NewMeasurementRow = typeof measurements.$inferInsert
+
+/** Аудит правок замера: снапшот до правки/удаления (спека 6.1.6). */
+export const measurementRevisions = sqliteTable('measurement_revisions', {
+  id: text('id').primaryKey(),
+  batchId: text('batch_id')
+    .notNull()
+    .references(() => batches.id, { onDelete: 'cascade' }),
+  /** Идентификатор замера без FK — аудит переживает удаление замера. */
+  measurementId: text('measurement_id').notNull(),
+  /** 'update' | 'delete' */
+  action: text('action').notNull(),
+  snapshot: text('snapshot', { mode: 'json' }).notNull(),
+  revisedAtUtc: text('revised_at_utc').notNull()
+})
+
+export type MeasurementRevisionRow = typeof measurementRevisions.$inferSelect
+export type NewMeasurementRevisionRow = typeof measurementRevisions.$inferInsert

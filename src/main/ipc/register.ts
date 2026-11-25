@@ -3,13 +3,13 @@ import {
   channels,
   settingsSchema,
   type ChannelDefinition,
-  type IpcEnvelope
+  type IpcEnvelope,
 } from '../../shared/ipc/contracts'
 import type { AppStateRepository } from '../app-state/repository'
 import type { InstrumentRepository, YeastStrainRepository } from '../catalogs/repositories'
 import type { BatchFull, BatchRepository } from '../batches/repository'
-import type { InstrumentRow } from '../db/schema'
-import type { YeastStrainRow } from '../db/schema'
+import type { MeasurementRepository } from '../measurements/repository'
+import type { InstrumentRow, MeasurementRevisionRow, MeasurementRow, YeastStrainRow } from '../db/schema'
 import type { UtilityRpc } from '../utility/spawn'
 import { nowUtcIso } from '../../shared/time/utc'
 
@@ -19,6 +19,7 @@ export interface IpcContext {
   instruments: InstrumentRepository
   strains: YeastStrainRepository
   batches: BatchRepository
+  measurements: MeasurementRepository
   utility: UtilityRpc
 }
 
@@ -104,11 +105,11 @@ export function registerIpcHandlers(ctx: IpcContext): void {
   })
 
   /* Справочник приборов */
-  handleChannel<{}, { items: ReturnType<InstrumentRepository['list']> }>(
+  handleChannel<{}, { items: InstrumentRow[] }>(
     channels.instrumentsList,
     () => ({ items: ctx.instruments.list() })
   )
-  handleChannel<Parameters<InstrumentRepository['create']>[0], { item: ReturnType<InstrumentRepository['create']> }>(
+  handleChannel<Parameters<InstrumentRepository['create']>[0], { item: InstrumentRow }>(
     channels.instrumentsCreate,
     (input) => ({ item: ctx.instruments.create(input) })
   )
@@ -120,13 +121,20 @@ export function registerIpcHandlers(ctx: IpcContext): void {
     ctx.instruments.delete(id)
     return { ok: true }
   })
+  handleChannel<
+    { instrumentId: string; refrBrix: number; hydrometerSg: number },
+    { item: InstrumentRow }
+  >(channels.instrumentsCalibrate, ({ instrumentId, refrBrix, hydrometerSg }) => {
+    const { instrument } = ctx.instruments.calibrate(instrumentId, refrBrix, hydrometerSg)
+    return { item: instrument }
+  })
 
   /* Справочник штаммов */
-  handleChannel<{}, { items: ReturnType<YeastStrainRepository['list']> }>(
+  handleChannel<{}, { items: YeastStrainRow[] }>(
     channels.strainsList,
     () => ({ items: ctx.strains.list() })
   )
-  handleChannel<Parameters<YeastStrainRepository['create']>[0], { item: ReturnType<YeastStrainRepository['create']> }>(
+  handleChannel<Parameters<YeastStrainRepository['create']>[0], { item: YeastStrainRow }>(
     channels.strainsCreate,
     (input) => ({ item: ctx.strains.create(input) })
   )
@@ -148,7 +156,7 @@ export function registerIpcHandlers(ctx: IpcContext): void {
     channels.batchesListArchived,
     () => ({ items: ctx.batches.listArchived() })
   )
-  handleChannel<Parameters<BatchRepository['create']>[0], { full: ReturnType<BatchRepository['create']> }>(
+  handleChannel<Parameters<BatchRepository['create']>[0], { full: BatchFull }>(
     channels.batchesCreate,
     (input) => ({ full: ctx.batches.create(input) })
   )
@@ -172,6 +180,31 @@ export function registerIpcHandlers(ctx: IpcContext): void {
     ctx.batches.delete(id)
     return { ok: true }
   })
+
+  /* Замеры: коррекция выполняется в репозитории через провайдер контекста
+     (createResolveContextProvider) — формула читается из настроек на сервере. */
+  handleChannel<{ batchId: string }, { items: MeasurementRow[] }>(
+    channels.measurementsListByBatch,
+    ({ batchId }) => ({ items: ctx.measurements.listByBatch(batchId) })
+  )
+  handleChannel<Parameters<MeasurementRepository['create']>[0], { item: MeasurementRow }>(
+    channels.measurementsCreate,
+    (input) => ({ item: ctx.measurements.create(input) })
+  )
+  handleChannel<
+    { id: string; patch: Parameters<MeasurementRepository['update']>[1] },
+    { item: MeasurementRow | null }
+  >(channels.measurementsUpdate, ({ id, patch }) => ({
+    item: ctx.measurements.update(id, patch) ?? null
+  }))
+  handleChannel<{ id: string }, { ok: boolean }>(channels.measurementsDelete, ({ id }) => {
+    ctx.measurements.delete(id)
+    return { ok: true }
+  })
+  handleChannel<{ id: string }, { items: MeasurementRevisionRow[] }>(
+    channels.measurementsRevisions,
+    ({ id }) => ({ items: ctx.measurements.listRevisions(id) })
+  )
 
   /* Настройки: один ключ JSON в app_state (design D4) */
   handleChannel<{}, { settings: typeof DEFAULT_SETTINGS | Record<string, unknown> }>(

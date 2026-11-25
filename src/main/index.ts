@@ -7,6 +7,8 @@ import { BackupScheduler, backupNow, rotateBackups } from './db/backup'
 import { AppStateRepository } from './app-state/repository'
 import { InstrumentRepository, YeastStrainRepository } from './catalogs/repositories'
 import { BatchRepository } from './batches/repository'
+import { MeasurementRepository } from './measurements/repository'
+import { createResolveContextProvider } from './measurements/context'
 import { registerIpcHandlers } from './ipc/register'
 import {
   spawnUtilityUtility,
@@ -87,6 +89,11 @@ async function main(): Promise<void> {
   const instruments = new InstrumentRepository(dbHandle.db, markDirty)
   const strains = new YeastStrainRepository(dbHandle.db, markDirty)
   const batches = new BatchRepository(dbHandle.db, markDirty)
+  const measurements = new MeasurementRepository(
+    dbHandle.db,
+    markDirty,
+    createResolveContextProvider({ appState: repo, instruments, batches })
+  )
 
   utility = spawnUtilityUtility(utilityModulePath())
 
@@ -96,6 +103,7 @@ async function main(): Promise<void> {
     instruments,
     strains,
     batches,
+    measurements,
     utility: utility.rpc
   })
 

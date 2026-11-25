@@ -29,12 +29,24 @@ export const instrumentInputSchema = z.object({
   name: z.string().min(1),
   type: instrumentTypeSchema,
   wcf: z.number().positive().nullable().optional(),
-  calibrationOffsetSg: z.number().nullable().optional()
+  calibrationOffsetSg: z.number().nullable().optional(),
+  /** Калибровочная температура ареометра T_кал, °C (vision, дефолт 20). */
+  calibrationTempC: z.number().min(0).max(30).nullable().optional()
 })
 export type InstrumentInput = z.infer<typeof instrumentInputSchema>
 
 export const instrumentDtoSchema = instrumentInputSchema.extend({
   id: z.string(),
+  calibrationTempC: z.number().nullable().optional(),
+  calibrationPair: z
+    .object({
+      refrBrix: z.number(),
+      hydrometerSg: z.number(),
+      wcf: z.number(),
+      atUtc: z.string()
+    })
+    .nullable()
+    .optional(),
   createdAtUtc: z.string(),
   updatedAtUtc: z.string()
 })
@@ -186,6 +198,112 @@ export const settingsSchema = z.object({
 })
 export type AppSettings = z.infer<typeof settingsSchema>
 
+/* ── Замеры (design add-measurements-correction D1, D4) ── */
+
+export const measurementKindSchema = z.enum(['density', 'temperature', 'ph'])
+export type MeasurementKind = z.infer<typeof measurementKindSchema>
+
+export const correctionStepSchema = z.object({
+  type: z.string(),
+  input: z.number(),
+  output: z.number(),
+  note: z.string().optional()
+})
+export type CorrectionStepDto = z.infer<typeof correctionStepSchema>
+
+export const correctionsSchema = z.object({
+  steps: z.array(correctionStepSchema),
+  warnings: z.array(z.string())
+})
+export type CorrectionsDto = z.infer<typeof correctionsSchema>
+
+export const measurementDtoSchema = z.object({
+  id: z.string(),
+  batchId: z.string(),
+  kind: measurementKindSchema,
+  instrumentId: z.string().nullable(),
+  rawValue: z.number(),
+  unit: z.enum(['sg', 'brix']),
+  tempC: z.number().nullable(),
+  correctedSg: z.number().nullable(),
+  correctedBrix: z.number().nullable(),
+  corrections: correctionsSchema,
+  measuredAtUtc: z.string(),
+  notes: z.string().nullable(),
+  createdAtUtc: z.string(),
+  updatedAtUtc: z.string()
+})
+export type MeasurementDto = z.infer<typeof measurementDtoSchema>
+
+const measurementBaseSchema = z.object({
+  batchId: z.string().min(1),
+  kind: measurementKindSchema,
+  instrumentId: z.string().nullable().optional(),
+  rawValue: z.number(),
+  unit: z.enum(['sg', 'brix']),
+  tempC: z.number().nullable().optional(),
+  measuredAtUtc: z.string(),
+  notes: z.string().nullable().optional()
+})
+
+export const measurementCreateSchema = measurementBaseSchema.superRefine((input, issues) => {
+    if (input.kind === 'density') {
+      // Спека 2.2: у замера плотности обязан быть прибор.
+      if (!input.instrumentId) {
+        issues.addIssue({
+          code: 'custom',
+          path: ['instrumentId'],
+          message: 'Для замера плотности укажите прибор'
+        })
+      }
+      const outOfRange =
+        input.unit === 'brix'
+          ? input.rawValue < 0 || input.rawValue > 80
+          : input.rawValue < 0.9 || input.rawValue > 1.2
+      if (outOfRange) {
+        issues.addIssue({
+          code: 'custom',
+          path: ['rawValue'],
+          message: 'Показание вне физического диапазона (Brix 0–80, SG 0.9–1.2)'
+        })
+      }
+    }
+    if (input.kind === 'temperature' && (input.rawValue < -5 || input.rawValue > 60)) {
+      issues.addIssue({
+        code: 'custom',
+        path: ['rawValue'],
+        message: 'Температура вне допустимого диапазона (−5…60 °C)'
+      })
+    }
+    if (input.kind === 'ph' && (input.rawValue < 0 || input.rawValue > 14)) {
+      issues.addIssue({
+        code: 'custom',
+        path: ['rawValue'],
+        message: 'pH вне допустимого диапазона (0–14)'
+      })
+    }
+  })
+export type MeasurementCreateInput = z.infer<typeof measurementBaseSchema>
+
+export const measurementPatchSchema = measurementBaseSchema.partial()
+export type MeasurementPatch = z.infer<typeof measurementPatchSchema>
+
+export const measurementRevisionDtoSchema = z.object({
+  id: z.string(),
+  measurementId: z.string(),
+  action: z.enum(['update', 'delete']),
+  snapshot: measurementDtoSchema.partial(),
+  revisedAtUtc: z.string()
+})
+export type MeasurementRevisionDto = z.infer<typeof measurementRevisionDtoSchema>
+
+export const calibrateSchema = z.object({
+  instrumentId: z.string().min(1),
+  refrBrix: z.number().min(0).max(80),
+  hydrometerSg: z.number().min(0.9).max(1.2)
+})
+export type CalibrateInput = z.infer<typeof calibrateSchema>
+
 /* ── Фабрика CRUD-дескрипторов (design D4: без копипасты) ── */
 
 interface CrudChannels {
@@ -334,6 +452,37 @@ export const channels = {
     name: 'settings:set',
     request: z.object({ settings: settingsSchema }),
     response: z.object({ ok: z.boolean() })
+  }),
+
+  measurementsListByBatch: defineChannel({
+    name: 'measurements:list-by-batch',
+    request: z.object({ batchId: z.string().min(1) }),
+    response: z.object({ items: z.array(measurementDtoSchema) })
+  }),
+  measurementsCreate: defineChannel({
+    name: 'measurements:create',
+    request: measurementCreateSchema,
+    response: z.object({ item: measurementDtoSchema })
+  }),
+  measurementsUpdate: defineChannel({
+    name: 'measurements:update',
+    request: z.object({ id: z.string().min(1), patch: measurementPatchSchema }),
+    response: z.object({ item: measurementDtoSchema.nullable() })
+  }),
+  measurementsDelete: defineChannel({
+    name: 'measurements:delete',
+    request: z.object({ id: z.string().min(1) }),
+    response: z.object({ ok: z.boolean() })
+  }),
+  measurementsRevisions: defineChannel({
+    name: 'measurements:revisions',
+    request: z.object({ id: z.string().min(1) }),
+    response: z.object({ items: z.array(measurementRevisionDtoSchema) })
+  }),
+  instrumentsCalibrate: defineChannel({
+    name: 'instruments:calibrate',
+    request: calibrateSchema,
+    response: z.object({ item: instrumentDtoSchema })
   })
 } as const
 

@@ -44,10 +44,12 @@ function InstrumentsTab(): ReactElement {
   const createInstrument = useCatalogsStore((s) => s.createInstrument)
   const updateInstrument = useCatalogsStore((s) => s.updateInstrument)
   const deleteInstrument = useCatalogsStore((s) => s.deleteInstrument)
+  const calibrate = useCatalogsStore((s) => s.calibrate)
   const hint = useCatalogsStore((s) => s.firstInstrumentHint)
   const dismissHint = useCatalogsStore((s) => s.dismissFirstInstrumentHint)
 
   const [editing, setEditing] = useState<InstrumentDto | null>(null)
+  const [calibrating, setCalibrating] = useState<InstrumentDto | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const submit = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
@@ -57,11 +59,13 @@ function InstrumentsTab(): ReactElement {
     const type = form.get('type') as InstrumentType
     const wcfRaw = String(form.get('wcf') ?? '').trim()
     const offsetRaw = String(form.get('calibrationOffsetSg') ?? '').trim()
+    const tcalRaw = String(form.get('calibrationTempC') ?? '').trim()
     const input: InstrumentInput = {
       name: String(form.get('name') ?? '').trim(),
       type,
       wcf: wcfRaw ? Number(wcfRaw) : null,
-      calibrationOffsetSg: offsetRaw ? Number(offsetRaw) : null
+      calibrationOffsetSg: offsetRaw ? Number(offsetRaw) : null,
+      calibrationTempC: tcalRaw ? Number(tcalRaw) : null
     }
     try {
       if (editing) {
@@ -83,8 +87,9 @@ function InstrumentsTab(): ReactElement {
           <strong>Зачем эти параметры?</strong>
           <p>
             Температура сусла нужна для пересчёта показаний ареометра к
-            стандартным 20 °C. Калибровочная пара «рефрактометр — ареометр»
-            позволит вычислить персональный коэффициент именно вашего прибора.
+            калибровочной температуре прибора (T_кал). Калибровочная пара
+            «рефрактометр — ареометр» позволит вычислить персональный
+            коэффициент именно вашего прибора.
           </p>
           <button type="button" onClick={dismissHint}>Понятно</button>
         </aside>
@@ -119,6 +124,17 @@ function InstrumentsTab(): ReactElement {
             defaultValue={editing?.calibrationOffsetSg ?? ''}
           />
         </label>
+        <label>
+          T_кал ареометра, °C (по умолчанию 20)
+          <input
+            name="calibrationTempC"
+            type="number"
+            step="0.5"
+            min="0"
+            max="30"
+            defaultValue={editing?.calibrationTempC ?? 20}
+          />
+        </label>
         {error ? <p className="error-text">{error}</p> : null}
         <div className="form-actions">
           <button type="submit">{editing ? 'Сохранить' : 'Добавить'}</button>
@@ -135,8 +151,13 @@ function InstrumentsTab(): ReactElement {
               <strong>{instrument.name}</strong> — {INSTRUMENT_TYPE_LABELS[instrument.type]}
               {instrument.wcf ? `, WCF ${instrument.wcf}` : ''}
               {instrument.calibrationOffsetSg ? `, смещение ${instrument.calibrationOffsetSg > 0 ? '+' : ''}${instrument.calibrationOffsetSg} SG` : ''}
+              {instrument.type === 'hydrometer' && instrument.calibrationTempC != null ? `, T_кал ${instrument.calibrationTempC} °C` : ''}
+              {instrument.calibrationPair ? ', калибрована по паре' : ''}
             </div>
             <div className="item-actions">
+              {instrument.type.startsWith('refractometer') ? (
+                <button type="button" onClick={() => setCalibrating(instrument)}>Калибровка</button>
+              ) : null}
               <button type="button" onClick={() => setEditing(instrument)}>Изменить</button>
               <button type="button" onClick={() => void deleteInstrument(instrument.id)}>Удалить</button>
             </div>
@@ -144,6 +165,78 @@ function InstrumentsTab(): ReactElement {
         ))}
         {instruments.length === 0 ? <li className="muted">Приборов пока нет — добавьте первый выше.</li> : null}
       </ul>
+
+      {calibrating ? (
+        <CalibrationDialog
+          instrument={calibrating}
+          onClose={() => setCalibrating(null)}
+          onConfirm={async (refrBrix, hydrometerSg) => {
+            await calibrate(calibrating.id, refrBrix, hydrometerSg)
+            setCalibrating(null)
+          }}
+        />
+      ) : null}
+    </div>
+  )
+}
+
+function CalibrationDialog(props: {
+  instrument: InstrumentDto
+  onConfirm(refrBrix: number, hydrometerSg: number): Promise<void>
+  onClose(): void
+}): ReactElement {
+  const { instrument } = props
+  const [refrBrix, setRefrBrix] = useState('')
+  const [hydrometerSg, setHydrometerSg] = useState('')
+  const [error, setError] = useState<string | null>(null)
+
+  const submit = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
+    event.preventDefault()
+    setError(null)
+    const b = Number(refrBrix)
+    const sg = Number(hydrometerSg)
+    if (!Number.isFinite(b) || refrBrix.trim() === '' || !Number.isFinite(sg) || hydrometerSg.trim() === '') {
+      setError('Введите оба показания')
+      return
+    }
+    if (b < 0 || b > 80) {
+      setError('Brix вне диапазона 0–80')
+      return
+    }
+    if (sg < 0.9 || sg > 1.2) {
+      setError('SG вне диапазона 0.9–1.2')
+      return
+    }
+    try {
+      await props.onConfirm(b, sg)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    }
+  }
+
+  return (
+    <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Калибровочная пара">
+      <form className="modal" onSubmit={(e) => void submit(e)}>
+        <h3>Калибровка — {instrument.name}</h3>
+        <p className="muted">
+          Отмерьте один образец сусла и замерьте его обоими приборами:
+          персональный WCF вычислится из пары и будет применяться к замерам
+          этого рефрактометра вместо усреднённого.
+        </p>
+        <label>
+          Показание рефрактометра, °Bx
+          <input value={refrBrix} onChange={(e) => setRefrBrix(e.target.value)} type="number" step="0.1" />
+        </label>
+        <label>
+          Показание ареометра, SG
+          <input value={hydrometerSg} onChange={(e) => setHydrometerSg(e.target.value)} type="number" step="0.0001" />
+        </label>
+        {error ? <p className="error-text">{error}</p> : null}
+        <div className="form-actions">
+          <button type="submit">Вычислить и применить</button>
+          <button type="button" onClick={props.onClose}>Отмена</button>
+        </div>
+      </form>
     </div>
   )
 }
