@@ -1,0 +1,48 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1795598939446,
+      "tag": "0000_zippy_krista_starr",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1795606055186,
+      "tag": "0001_milky_leader",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1795612131641,
+      "tag": "0002_lean_selene",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1795613803271,
+      "tag": "0003_big_skreet",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1795689847764,
+      "tag": "0004_rename_offset_bx",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1795689907764,
+      "tag": "0005_yeast_link_backfill",
+      "breakpoints": true
+    }
+  ]
+}

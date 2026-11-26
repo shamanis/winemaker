@@ -1,0 +1,37 @@
+appId: io.github.winemaker.desktop
+productName: Winemaker
+icon: build/icon.png
+directories:
+  output: release
+files:
+  - out/**
+  - '!**/*.map'
+extraResources:
+  # Миграции кладутся в resources/ рядом с asar — читаются реальным fs.
+  - from: drizzle
+    to: drizzle
+  # Иконка окна для Windows/Linux (macOS берёт icns из icon.png).
+  - from: build/icon.png
+    to: icon.png
+asarUnpack:
+  # utility process запускается из реального файла на диске.
+  - out/main/utility.js
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+nsis:
+  oneClick: false
+  artifactName: ${productName}-${version}-setup.${ext}
+mac:
+  target:
+    - target: zip
+      arch: [arm64, x64]
+  category: public.app-category.food-and-drink
+linux:
+  target:
+    - target: deb
+      arch: [x64]
+    - target: tar.gz
+      arch: [x64]
+  category: Utility
