@@ -39,7 +39,7 @@ function setup(handle: DatabaseHandle) {
         ? {
             type: instrument.type,
             wcf: instrument.wcf,
-            calibrationOffsetSg: instrument.calibrationOffsetSg,
+            calibrationOffsetBx: instrument.calibrationOffsetBx,
             calibrationTempC: instrument.calibrationTempC,
             hasCalibrationPair: instrument.calibrationPair != null
           }
@@ -69,7 +69,7 @@ const REFRACTOMETER = {
   name: 'Рефрактометр',
   type: 'refractometer-atc',
   wcf: 1.04,
-  calibrationOffsetSg: null
+  calibrationOffsetBx: null
 }
 
 describe('MeasurementRepository', () => {
@@ -161,12 +161,13 @@ describe('калибровка прибора (2.3)', () => {
     const instruments = new InstrumentRepository(handle.db, () => undefined)
     const refr = instruments.create(REFRACTOMETER)
 
-    const { instrument, wcf } = instruments.calibrate(refr.id, 21.5, 1.09)
-    expect(wcf).toBeGreaterThan(0.9)
+    const { instrument, wcf } = instruments.calibrate(refr.id, 20, 21)
+    // оба показания в °Bx: WCF = гидро / рефр = 21 / 20
+    expect(wcf).toBeCloseTo(1.05, 10)
     expect(instrument.wcf).toBeCloseTo(wcf, 12)
-    const pair = instrument.calibrationPair as { refrBrix: number; hydrometerSg: number }
-    expect(pair.refrBrix).toBe(21.5)
-    expect(pair.hydrometerSg).toBe(1.09)
+    const pair = instrument.calibrationPair as { refrBrix: number; hydrometerBx: number }
+    expect(pair.refrBrix).toBe(20)
+    expect(pair.hydrometerBx).toBe(21)
   })
 
   it('calibrate: к ареометру пару применить нельзя', () => {
@@ -176,7 +177,7 @@ describe('калибровка прибора (2.3)', () => {
       name: 'АС-3',
       type: 'hydrometer',
       wcf: null,
-      calibrationOffsetSg: null,
+      calibrationOffsetBx: null,
       calibrationTempC: 20
     })
     expect(() => instruments.calibrate(hydrometer.id, 21.5, 1.09)).toThrow('refractometer')

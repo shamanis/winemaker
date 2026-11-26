@@ -10,7 +10,7 @@ export type MarkDirty = () => void
 
 export interface CalibrationPair {
   refrBrix: number
-  hydrometerSg: number
+  hydrometerBx: number
   wcf: number
   atUtc: string
 }
@@ -61,17 +61,17 @@ export class InstrumentRepository {
   calibrate(
     instrumentId: string,
     refrBrix: number,
-    hydrometerSg: number
+    hydrometerBx: number
   ): { instrument: InstrumentRow; wcf: number } {
     const instrument = this.get(instrumentId)
     if (!instrument) throw new Error('Instrument not found')
     if (!instrument.type.startsWith('refractometer')) {
       throw new Error('Calibration pair applies to a refractometer')
     }
-    const wcf = computePersonalWcf(refrBrix, hydrometerSg)
+    const wcf = computePersonalWcf(refrBrix, hydrometerBx)
     const pair: CalibrationPair = {
       refrBrix,
-      hydrometerSg,
+      hydrometerBx,
       wcf,
       atUtc: nowUtcIso()
     }

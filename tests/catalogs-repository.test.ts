@@ -30,7 +30,7 @@ describe('справочники (repositories)', () => {
       name: 'Рефрактометр РПЛ-3',
       type: 'refractometer-atc',
       wcf: 1.04,
-      calibrationOffsetSg: null
+      calibrationOffsetBx: null
     })
     expect(repo.list()).toHaveLength(1)
     expect(created.wcf).toBeCloseTo(1.04)

@@ -15,7 +15,7 @@ describe('resolveMeasurement — пайплайн коррекции', () => {
   it('temperature/ph: значение как есть, без коррекций', () => {
     const r = resolveMeasurement(
       { kind: 'ph', rawValue: 3.4, unit: 'sg', measuredAtUtc: '2026-11-25T11:00:00.000Z' },
-      { ...BASE_CTX, instrument: { type: 'hydrometer', wcf: null, calibrationOffsetSg: null } }
+      { ...BASE_CTX, instrument: { type: 'hydrometer', wcf: null, calibrationOffsetBx: null } }
     )
     expect(r.correctedSg).toBeNull()
     expect(r.corrections).toHaveLength(0)
@@ -35,30 +35,32 @@ describe('resolveMeasurement — пайплайн коррекции', () => {
         instrument: {
           type: 'hydrometer',
           wcf: null,
-          calibrationOffsetSg: 0.002,
+          calibrationOffsetBx: 0.002,
           calibrationTempC: 20
         }
       }
     )
-    expect(r.corrections.map((c) => c.type)).toEqual(['hydrometer-temp', 'calibration-offset'])
-    // 1.09 × (1+3.7e-4×8) = 1.0932264 → +0.002
-    expect(r.correctedSg).toBeCloseTo(1.0932264 + 0.002, 8)
+    expect(r.corrections.map((c) => c.type)).toEqual(['sg-to-brix', 'calibration-offset', 'hydrometer-temp'])
+    // 1.09 SG → Bx → +0.002 °Bx → SG → темп-коррекция (28 − 20 = 8 °C)
+    const sg0 = brixToSg(invertBrixToSg(1.09) + 0.002)
+    expect(r.correctedSg).toBeCloseTo(sg0 * (1 + 3.7e-4 * 8), 8)
     expect(r.warnings).toHaveLength(0)
   })
 
-  it('ареометр в Brix: сначала перевод в SG, потом температура', () => {
+  it('ареометр в Brix: темп-коррекция при T = T_кал ничего не меняет', () => {
     const r = resolveMeasurement(
       { kind: 'density', rawValue: 22, unit: 'brix', tempC: 20, measuredAtUtc: '2026-11-25T11:00:00.000Z' },
-      { ...BASE_CTX, instrument: { type: 'hydrometer', wcf: null, calibrationOffsetSg: null, calibrationTempC: 20 } }
+      { ...BASE_CTX, instrument: { type: 'hydrometer', wcf: null, calibrationOffsetBx: null, calibrationTempC: 20 } }
     )
-    expect(r.corrections[0]?.type).toBe('brix-to-sg')
+    expect(r.corrections[0]?.type).toBe('hydrometer-temp')
     expect(r.correctedSg).toBeCloseTo(brixToSg(22), 10)
+    expect(r.correctedBrix).toBeCloseTo(22, 10)
   })
 
   it('предупреждение вне зоны 10–35 °C', () => {
     const r = resolveMeasurement(
       { kind: 'density', rawValue: 1.05, unit: 'sg', tempC: 38, measuredAtUtc: '2026-11-25T11:00:00.000Z' },
-      { ...BASE_CTX, instrument: { type: 'hydrometer', wcf: null, calibrationOffsetSg: null } }
+      { ...BASE_CTX, instrument: { type: 'hydrometer', wcf: null, calibrationOffsetBx: null } }
     )
     expect(r.warnings).toHaveLength(1)
     expect(r.warnings[0]).toContain('вне зоны аппроксимации')
@@ -70,7 +72,7 @@ describe('resolveMeasurement — пайплайн коррекции', () => {
       {
         ...BASE_CTX,
         correctionFormula: 'terrill',
-        instrument: { type: 'refractometer-atc', wcf: 1.04, calibrationOffsetSg: null, hasCalibrationPair: false }
+        instrument: { type: 'refractometer-atc', wcf: 1.04, calibrationOffsetBx: null, hasCalibrationPair: false }
       }
     )
     // WCF к текущему показанию НЕ применяется (регрессия Террилла на сырых)
@@ -99,7 +101,7 @@ describe('resolveMeasurement — пайплайн коррекции', () => {
       {
         ...BASE_CTX,
         correctionFormula: 'terrill',
-        instrument: { type: 'refractometer-atc', wcf: 1.04, calibrationOffsetSg: null, hasCalibrationPair: false }
+        instrument: { type: 'refractometer-atc', wcf: 1.04, calibrationOffsetBx: null, hasCalibrationPair: false }
       }
     )
     // 14 > 13.2 = 0.6×22 — эвристика docs: вне домена → Novotný
@@ -119,7 +121,7 @@ describe('resolveMeasurement — пайплайн коррекции', () => {
       tempC: null,
       measuredAtUtc: '2026-11-26T11:00:00.000Z'
     }
-    const instrument = { type: 'refractometer-atc', wcf: 1.04, calibrationOffsetSg: null, hasCalibrationPair: true }
+    const instrument = { type: 'refractometer-atc', wcf: 1.04, calibrationOffsetBx: null, hasCalibrationPair: true }
     const terrill = resolveMeasurement(input, { ...BASE_CTX, instrument, correctionFormula: 'terrill' })
     const linear = resolveMeasurement(input, { ...BASE_CTX, instrument, correctionFormula: 'linear' })
     expect(linear.correctedSg).not.toBeCloseTo(terrill.correctedSg as number, 4)
@@ -134,7 +136,7 @@ describe('resolveMeasurement — пайплайн коррекции', () => {
   })
 
   it('ранняя стадия (Bf близко к Bi): авто и ручной Террилл → Novotný + info (не ошибка)', () => {
-    const instrument = { type: 'refractometer-atc', wcf: 1.04, calibrationOffsetSg: null, hasCalibrationPair: true }
+    const instrument = { type: 'refractometer-atc', wcf: 1.04, calibrationOffsetBx: null, hasCalibrationPair: true }
     // Авто: модель Новотного корректна на ранней стадии — SG_app в физике
     const auto = resolveMeasurement(
       { kind: 'density', rawValue: 18, unit: 'brix', tempC: null, measuredAtUtc: '2026-11-26T11:00:00.000Z' },
@@ -156,7 +158,7 @@ describe('resolveMeasurement — пайплайн коррекции', () => {
   })
 
   it('авто: Novotný на любой стадии, SG ≤ OG, след содержит модель и ABV', () => {
-    const instrument = { type: 'refractometer-atc', wcf: 1.04, calibrationOffsetSg: null, hasCalibrationPair: true }
+    const instrument = { type: 'refractometer-atc', wcf: 1.04, calibrationOffsetBx: null, hasCalibrationPair: true }
     for (const raw of [22, 18, 14, 10, 8]) {
       const r = resolveMeasurement(
         { kind: 'density', rawValue: raw, unit: 'brix', tempC: null, measuredAtUtc: '2026-11-26T11:00:00.000Z' },
@@ -172,7 +174,7 @@ describe('resolveMeasurement — пайплайн коррекции', () => {
   })
 
   it('авто-результаты сходятся с контрольными точками модели', () => {
-    const instrument = { type: 'refractometer-atc', wcf: 1.04, calibrationOffsetSg: null, hasCalibrationPair: true }
+    const instrument = { type: 'refractometer-atc', wcf: 1.04, calibrationOffsetBx: null, hasCalibrationPair: true }
     // B₀ = 22×1.04 = 22.88; при R=8: SG_app ≈ 0.9989 (по контрольной таблице с WCF-масштабом)
     const r = resolveMeasurement(
       { kind: 'density', rawValue: 8, unit: 'brix', tempC: null, measuredAtUtc: '2026-11-26T11:00:00.000Z' },
@@ -183,7 +185,7 @@ describe('resolveMeasurement — пайплайн коррекции', () => {
   })
 
   it('ручной выбор переопределяет авто (линейная вне ранней стадии — Баллинг)', () => {
-    const instrument = { type: 'refractometer-atc', wcf: 1.04, calibrationOffsetSg: null, hasCalibrationPair: true }
+    const instrument = { type: 'refractometer-atc', wcf: 1.04, calibrationOffsetBx: null, hasCalibrationPair: true }
     // 12 ≤ 0.6×22 = 13.2 — не ранняя стадия, линейная применяется
     const r = resolveMeasurement(
       { kind: 'density', rawValue: 12, unit: 'brix', tempC: null, measuredAtUtc: '2026-11-26T11:00:00.000Z' },
@@ -196,7 +198,7 @@ describe('resolveMeasurement — пайплайн коррекции', () => {
   it('замер до/в момент постановки — без ферментной коррекции', () => {
     const r = resolveMeasurement(
       { kind: 'density', rawValue: 22, unit: 'brix', tempC: null, measuredAtUtc: '2026-11-25T10:00:00.000Z' },
-      { ...BASE_CTX, instrument: { type: 'refractometer-atc', wcf: 1.04, calibrationOffsetSg: null, hasCalibrationPair: true } }
+      { ...BASE_CTX, instrument: { type: 'refractometer-atc', wcf: 1.04, calibrationOffsetBx: null, hasCalibrationPair: true } }
     )
     expect(r.corrections.map((c) => c.type)).toEqual(['wcf', 'brix-to-sg'])
   })
@@ -209,7 +211,7 @@ describe('resolveMeasurement — пайплайн коррекции', () => {
         startRawGravity: { value: 1.0922, unit: 'sg' },
         startOgSg: 1.0922,
         batchStartDateUtc: '2026-11-25T10:00:00.000Z',
-        instrument: { type: 'refractometer-atc', wcf: 1, calibrationOffsetSg: null, hasCalibrationPair: true }
+        instrument: { type: 'refractometer-atc', wcf: 1, calibrationOffsetBx: null, hasCalibrationPair: true }
       }
     )
     const note = r.corrections.find((c) => c.type === 'fermentation-correction')?.note ?? ''

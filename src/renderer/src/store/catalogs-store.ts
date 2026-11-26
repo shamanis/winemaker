@@ -13,7 +13,7 @@ interface CatalogsStoreState {
   updateInstrument(id: string, patch: Partial<InstrumentInput>): Promise<void>
   deleteInstrument(id: string): Promise<void>
   /** Калибровка по паре «рефрактометр — ареометр» (спека 2.6). */
-  calibrate(id: string, refrBrix: number, hydrometerSg: number): Promise<void>
+  calibrate(id: string, refrBrix: number, hydrometerBx: number): Promise<void>
   createStrain(input: StrainInput): Promise<StrainDto>
   updateStrain(id: string, patch: Partial<StrainInput>): Promise<void>
   deleteStrain(id: string): Promise<void>
@@ -53,8 +53,8 @@ export const useCatalogsStore = create<CatalogsStoreState>((set, get) => ({
     set((s) => ({ instruments: s.instruments.filter((i) => i.id !== id) }))
   },
 
-  async calibrate(id, refrBrix, hydrometerSg) {
-    const updated = await api.calibrate(id, refrBrix, hydrometerSg)
+  async calibrate(id, refrBrix, hydrometerBx) {
+    const updated = await api.calibrate(id, refrBrix, hydrometerBx)
     set((s) => ({ instruments: s.instruments.map((i) => (i.id === id ? updated : i)) }))
   },
 

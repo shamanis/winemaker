@@ -17,8 +17,9 @@ export const TEMP_WARN_MAX_C = 35
 /** Домен Террилла (docs/refractometer.md): R должен опуститься до 0.6 от OG. */
 export const TERRILL_DOMAIN_RATIO = 0.6
 
-/** Коэффициент линейной коррекции (vision, k = 3.7e-4). */
-const TEMP_K = 3.7e-4
+/** Коэффициент линейной темп-коррекции (vision, k = 3.7e-4) — на SG. */
+export const HYDROMETER_TEMP_K = 3.7e-4
+const TEMP_K = HYDROMETER_TEMP_K
 
 /**
  * Корректировка показаний ареометра по температуре сусла
@@ -40,20 +41,8 @@ export function isTempOutOfApproximation(tempC: number): boolean {
 
 /* ── Инверсия SG → Brix ── */
 
-/**
- * Численное обращение монотонной `brixToSg` (бисекция до 1e-9).
- * Нужно для Bi при старте партии в SG и для калибровочной пары.
- */
-export function invertBrixToSg(sg: number): number {
-  let lo = 0
-  let hi = 120
-  for (let i = 0; i < 64; i++) {
-    const mid = (lo + hi) / 2
-    if (brixToSg(mid) < sg) lo = mid
-    else hi = mid
-  }
-  return (lo + hi) / 2
-}
+/** Обратный перевод SG → °Bx (живёт в density.ts рядом с `brixToSg`). */
+export { invertBrixToSg } from './density'
 
 /* ── Коррекция рефрактометра после начала брожения ── */
 
@@ -87,9 +76,9 @@ export function linearCorrection(oePlato: number, aePlato: number): number {
 /* ── Калибровочная пара «рефрактометр — ареометр» ── */
 
 /**
- * Персональный WCF из пары показаний по одному образцу:
- * WCF = истинный Brix (из SG ареометра) / сырой Brix рефрактометра.
+ * Персональный WCF из калибровочной пары: оба показания в °Bx
+ * (ареометры пользователя имеют шкалу Brix), WCF = гидроBx / рефрBx.
  */
-export function computePersonalWcf(refrBrix: number, hydrometerSg: number): number {
-  return invertBrixToSg(hydrometerSg) / refrBrix
+export function computePersonalWcf(refrBrix: number, hydrometerBx: number): number {
+  return hydrometerBx / refrBrix
 }

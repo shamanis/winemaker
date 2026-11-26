@@ -153,9 +153,9 @@ export function createApiClient(transport: WinemakerTransport) {
     calibrate: async (
       instrumentId: string,
       refrBrix: number,
-      hydrometerSg: number
+      hydrometerBx: number
     ): Promise<InstrumentDto> =>
-      (await invokeChannel(transport, 'instrumentsCalibrate', { instrumentId, refrBrix, hydrometerSg }))
+      (await invokeChannel(transport, 'instrumentsCalibrate', { instrumentId, refrBrix, hydrometerBx }))
         .item,
 
     operations: {

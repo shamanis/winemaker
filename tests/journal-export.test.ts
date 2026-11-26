@@ -72,7 +72,7 @@ describe('buildExportPayload (data-portability)', () => {
     )
     const operations = new OperationRepository(handle.db, () => undefined)
 
-    const refr = instruments.create({ name: 'Рефрактометр', type: 'refractometer-atc', wcf: 1.04, calibrationOffsetSg: null })
+    const refr = instruments.create({ name: 'Рефрактометр', type: 'refractometer-atc', wcf: 1.04, calibrationOffsetBx: null })
     const batch = batches.create({
       title: 'Экспорт-тест',
       rawMaterial: 'Виноград',

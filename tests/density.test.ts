@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   brixToSg,
+  invertBrixToSg,
   resolveOgSg,
   type GravityInstrument
 } from '../src/shared/calculations/density'
@@ -28,12 +29,12 @@ describe('resolveOgSg — OG всегда в SG (design D7)', () => {
   const refractometer: GravityInstrument = {
     type: 'refractometer-atc',
     wcf: 1.04,
-    calibrationOffsetSg: null
+    calibrationOffsetBx: null
   }
   const hydrometer: GravityInstrument = {
     type: 'hydrometer',
     wcf: null,
-    calibrationOffsetSg: 0.002
+    calibrationOffsetBx: 0.5
   }
 
   it('Brix: применяет WCF прибора до перевода в SG', () => {
@@ -51,12 +52,14 @@ describe('resolveOgSg — OG всегда в SG (design D7)', () => {
     expect(ogSg).toBeCloseTo(brixToSg(22), 12)
   })
 
-  it('SG: применяет калибровочное смещение ареометра', () => {
+  it('SG: смещение ареометра в °Bx применяется в Bx-пространстве', () => {
     const { ogSg, correctedBrix } = resolveOgSg(
       { value: 1.09, unit: 'sg' },
       hydrometer
     )
-    expect(ogSg).toBeCloseTo(1.092, 12)
+    // B = invert(1.09) + 0.5 → OG = brixToSg(B)
+    const b = invertBrixToSg(1.09) + 0.5
+    expect(ogSg).toBeCloseTo(brixToSg(b), 10)
     expect(correctedBrix).toBeNull()
   })
 

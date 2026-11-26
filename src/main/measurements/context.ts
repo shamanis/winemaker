@@ -35,7 +35,7 @@ export function createResolveContextProvider(deps: {
         ? {
             type: instrument.type,
             wcf: instrument.wcf,
-            calibrationOffsetSg: instrument.calibrationOffsetSg,
+            calibrationOffsetBx: instrument.calibrationOffsetBx,
             calibrationTempC: instrument.calibrationTempC,
             hasCalibrationPair: instrument.calibrationPair != null
           }

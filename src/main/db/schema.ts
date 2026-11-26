@@ -23,7 +23,8 @@ export const instruments = sqliteTable('instruments', {
   /** 'refractometer-atc' | 'refractometer' | 'hydrometer' | 'other' */
   type: text('type').notNull(),
   wcf: real('wcf'),
-  calibrationOffsetSg: real('calibration_offset_sg'),
+  /** Смещение показаний ареометра, °Bx (ареометры пользователя показывают Brix). */
+  calibrationOffsetBx: real('calibration_offset_bx'),
   /** Калибровочная температура прибора T_кал, °C (vision; по умолчанию 20). */
   calibrationTempC: real('calibration_temp_c'),
   /** Калибровочная пара «рефрактометр — ареометр» + вычисленный WCF. */

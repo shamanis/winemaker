@@ -30,7 +30,7 @@ function buildContext(batch: BatchDto, instrumentId: string | null): PipelineCon
       ? {
           type: instrument.type,
           wcf: instrument.wcf ?? null,
-          calibrationOffsetSg: instrument.calibrationOffsetSg ?? null,
+          calibrationOffsetBx: instrument.calibrationOffsetBx ?? null,
           calibrationTempC: instrument.calibrationTempC ?? null,
           hasCalibrationPair: instrument.calibrationPair != null
         }

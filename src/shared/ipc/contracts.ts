@@ -29,7 +29,8 @@ export const instrumentInputSchema = z.object({
   name: z.string().min(1),
   type: instrumentTypeSchema,
   wcf: z.number().positive().nullable().optional(),
-  calibrationOffsetSg: z.number().nullable().optional(),
+  /** Смещение показаний ареометра, °Bx (ареометры пользователя показывают Brix). */
+  calibrationOffsetBx: z.number().min(-5).max(5).nullable().optional(),
   /** Калибровочная температура ареометра T_кал, °C (vision, дефолт 20). */
   calibrationTempC: z.number().min(0).max(30).nullable().optional()
 })
@@ -41,7 +42,7 @@ export const instrumentDtoSchema = instrumentInputSchema.extend({
   calibrationPair: z
     .object({
       refrBrix: z.number(),
-      hydrometerSg: z.number(),
+      hydrometerBx: z.number(),
       wcf: z.number(),
       atUtc: z.string()
     })
@@ -326,7 +327,7 @@ export type MeasurementRevisionDto = z.infer<typeof measurementRevisionDtoSchema
 export const calibrateSchema = z.object({
   instrumentId: z.string().min(1),
   refrBrix: z.number().min(0).max(80),
-  hydrometerSg: z.number().min(0.9).max(1.2)
+  hydrometerBx: z.number().min(0).max(80)
 })
 export type CalibrateInput = z.infer<typeof calibrateSchema>
 

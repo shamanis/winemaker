@@ -126,10 +126,10 @@ export function registerIpcHandlers(ctx: IpcContext): void {
     return { ok: true }
   })
   handleChannel<
-    { instrumentId: string; refrBrix: number; hydrometerSg: number },
+    { instrumentId: string; refrBrix: number; hydrometerBx: number },
     { item: InstrumentRow }
-  >(channels.instrumentsCalibrate, ({ instrumentId, refrBrix, hydrometerSg }) => {
-    const { instrument } = ctx.instruments.calibrate(instrumentId, refrBrix, hydrometerSg)
+  >(channels.instrumentsCalibrate, ({ instrumentId, refrBrix, hydrometerBx }) => {
+    const { instrument } = ctx.instruments.calibrate(instrumentId, refrBrix, hydrometerBx)
     return { item: instrument }
   })
 

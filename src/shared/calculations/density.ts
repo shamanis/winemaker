@@ -18,10 +18,26 @@ export const SG_MIN = 0.9
 export const SG_MAX = 1.2
 
 /** Параметры прибора, нужные для вычисления OG. */
+/**
+ * Численное обращение монотонной `brixToSg` (бисекция до 1e-9).
+ * Нужно для смещения ареометра в °Bx при вводе в SG и для калибровочной пары.
+ */
+export function invertBrixToSg(sg: number): number {
+  let lo = 0
+  let hi = 120
+  for (let i = 0; i < 64; i++) {
+    const mid = (lo + hi) / 2
+    if (brixToSg(mid) < sg) lo = mid
+    else hi = mid
+  }
+  return (lo + hi) / 2
+}
+
 export interface GravityInstrument {
   readonly type: string
   readonly wcf: number | null
-  readonly calibrationOffsetSg: number | null
+  /** Смещение показаний ареометра, °Bx (аддитивное, в шкале прибора). */
+  readonly calibrationOffsetBx: number | null
 }
 
 export interface RawGravityInput {
@@ -42,9 +58,18 @@ export interface ResolvedOg {
  * смещение ареометра. Температурная коррекция — этап measurement-correction.
  */
 export function resolveOgSg(raw: RawGravityInput, instrument: GravityInstrument | null): ResolvedOg {
+  const isRefractometer = instrument != null && instrument.type.startsWith('refractometer')
   if (raw.unit === 'brix') {
-    const correctedBrix = raw.value * (instrument?.wcf ?? 1)
+    // Рефрактометр: WCF; ареометр в Brix: аддитивное смещение °Bx
+    const correctedBrix = isRefractometer
+      ? raw.value * (instrument?.wcf ?? 1)
+      : raw.value + (instrument?.calibrationOffsetBx ?? 0)
     return { ogSg: brixToSg(correctedBrix), correctedBrix }
   }
-  return { ogSg: raw.value + (instrument?.calibrationOffsetSg ?? 0), correctedBrix: null }
+  // SG: показание уже в SG; смещение ареометра (в °Bx) применяется
+  // в Bx-пространстве: инверсия → смещение → обратно в SG
+  const offsetBx = instrument?.calibrationOffsetBx ?? 0
+  if (offsetBx === 0) return { ogSg: raw.value, correctedBrix: null }
+  const b = invertBrixToSg(raw.value) + offsetBx
+  return { ogSg: brixToSg(b), correctedBrix: null }
 }

@@ -72,10 +72,9 @@ describe('линейная коррекция (Баллинг)', () => {
 })
 
 describe('калибровочная пара', () => {
-  it('WCF = истинный Brix (из SG) / сырой Brix', () => {
-    const wcf = computePersonalWcf(21.5, 1.09)
-    expect(wcf).toBeCloseTo(invertBrixToSg(1.09) / 21.5, 12)
-    expect(wcf).toBeGreaterThan(0.9)
-    expect(wcf).toBeLessThan(1.2)
+  it('WCF = гидроBx / рефрBx (оба показания в °Bx)', () => {
+    const wcf = computePersonalWcf(20, 21)
+    expect(wcf).toBeCloseTo(21 / 20, 12)
+    expect(wcf).toBeGreaterThan(1.0)
   })
 })

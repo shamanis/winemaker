@@ -4,7 +4,7 @@ import { createDatabase, type DatabaseHandle } from '../src/main/db/database'
 import { applyMigrations } from '../src/main/db/migrate'
 import { InstrumentRepository, YeastStrainRepository } from '../src/main/catalogs/repositories'
 import { BatchRepository } from '../src/main/batches/repository'
-import { brixToSg } from '../src/shared/calculations/density'
+import { brixToSg, invertBrixToSg } from '../src/shared/calculations/density'
 
 const MIGRATIONS_FOLDER = resolve(__dirname, '..', 'drizzle')
 const handles: DatabaseHandle[] = []
@@ -83,7 +83,7 @@ describe('BatchRepository', () => {
       name: 'Рефрактометр',
       type: 'refractometer-atc',
       wcf: 1.04,
-      calibrationOffsetSg: null
+      calibrationOffsetBx: null
     })
     const full = batch.create({
       ...BASE_INPUT,
@@ -105,7 +105,7 @@ describe('BatchRepository', () => {
       name: 'Ареометр АС-3',
       type: 'hydrometer',
       wcf: null,
-      calibrationOffsetSg: 0.002
+      calibrationOffsetBx: 0.002
     })
     const full = batch.create({
       ...BASE_INPUT,
@@ -114,7 +114,9 @@ describe('BatchRepository', () => {
       }
     })
     const params = full.batch.startParams as { gravity: { ogSg: number } }
-    expect(params.gravity.ogSg).toBeCloseTo(1.092, 10)
+    // 1.09 SG → Bx → +0.002 °Bx → обратно в SG
+    expect(params.gravity.ogSg).toBeCloseTo(brixToSg(invertBrixToSg(1.09) + 0.002), 10)
+    expect(params.gravity.ogSg).toBeGreaterThan(1.09)
   })
 
   it('смена статуса дополняет append-only историю', () => {

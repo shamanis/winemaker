@@ -290,7 +290,7 @@ function BatchCreateForm(props: { onDone(): void; onCancel(): void }): ReactElem
         ? {
             type: instrument.type,
             wcf: instrument.wcf ?? null,
-            calibrationOffsetSg: instrument.calibrationOffsetSg ?? null
+            calibrationOffsetBx: instrument.calibrationOffsetBx ?? null
           }
         : null
     )

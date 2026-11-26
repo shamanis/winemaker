@@ -61,13 +61,13 @@ function InstrumentsTab(): ReactElement {
     const formData = new FormData(form)
     const type = formData.get('type') as InstrumentType
     const wcfRaw = String(formData.get('wcf') ?? '').trim()
-    const offsetRaw = String(formData.get('calibrationOffsetSg') ?? '').trim()
+    const offsetRaw = String(formData.get('calibrationOffsetBx') ?? '').trim()
     const tcalRaw = String(formData.get('calibrationTempC') ?? '').trim()
     const input: InstrumentInput = {
       name: String(formData.get('name') ?? '').trim(),
       type,
       wcf: wcfRaw ? Number(wcfRaw) : null,
-      calibrationOffsetSg: offsetRaw ? Number(offsetRaw) : null,
+      calibrationOffsetBx: offsetRaw ? Number(offsetRaw) : null,
       calibrationTempC: tcalRaw ? Number(tcalRaw) : null
     }
     try {
@@ -119,12 +119,12 @@ function InstrumentsTab(): ReactElement {
         <label>
           Калибровочное смещение SG (для ареометра)
           <input
-            name="calibrationOffsetSg"
+            name="calibrationOffsetBx"
             type="number"
             step="0.0001"
             min="-0.05"
             max="0.05"
-            defaultValue={editing?.calibrationOffsetSg ?? ''}
+            defaultValue={editing?.calibrationOffsetBx ?? ''}
           />
         </label>
         <label>
@@ -153,7 +153,7 @@ function InstrumentsTab(): ReactElement {
             <div>
               <strong>{instrument.name}</strong> — {INSTRUMENT_TYPE_LABELS[instrument.type]}
               {instrument.wcf ? `, WCF ${instrument.wcf}` : ''}
-              {instrument.calibrationOffsetSg ? `, смещение ${instrument.calibrationOffsetSg > 0 ? '+' : ''}${instrument.calibrationOffsetSg} SG` : ''}
+              {instrument.calibrationOffsetBx ? `, смещение ${instrument.calibrationOffsetBx > 0 ? '+' : ''}${instrument.calibrationOffsetBx} SG` : ''}
               {instrument.type === 'hydrometer' && instrument.calibrationTempC != null ? `, T_кал ${instrument.calibrationTempC} °C` : ''}
               {instrument.calibrationPair ? ', калибрована по паре' : ''}
             </div>
@@ -173,8 +173,8 @@ function InstrumentsTab(): ReactElement {
         <CalibrationDialog
           instrument={calibrating}
           onClose={() => setCalibrating(null)}
-          onConfirm={async (refrBrix, hydrometerSg) => {
-            await calibrate(calibrating.id, refrBrix, hydrometerSg)
+          onConfirm={async (refrBrix, hydrometerBx) => {
+            await calibrate(calibrating.id, refrBrix, hydrometerBx)
             setCalibrating(null)
           }}
         />
@@ -185,20 +185,20 @@ function InstrumentsTab(): ReactElement {
 
 function CalibrationDialog(props: {
   instrument: InstrumentDto
-  onConfirm(refrBrix: number, hydrometerSg: number): Promise<void>
+  onConfirm(refrBrix: number, hydrometerBx: number): Promise<void>
   onClose(): void
 }): ReactElement {
   const { instrument } = props
   const [refrBrix, setRefrBrix] = useState('')
-  const [hydrometerSg, setHydrometerSg] = useState('')
+  const [hydrometerBx, setHydrometerSg] = useState('')
   const [error, setError] = useState<string | null>(null)
 
   const submit = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault()
     setError(null)
     const b = Number(refrBrix)
-    const sg = Number(hydrometerSg)
-    if (!Number.isFinite(b) || refrBrix.trim() === '' || !Number.isFinite(sg) || hydrometerSg.trim() === '') {
+    const sg = Number(hydrometerBx)
+    if (!Number.isFinite(b) || refrBrix.trim() === '' || !Number.isFinite(sg) || hydrometerBx.trim() === '') {
       setError('Введите оба показания')
       return
     }
@@ -232,7 +232,7 @@ function CalibrationDialog(props: {
         </label>
         <label>
           Показание ареометра, SG
-          <input value={hydrometerSg} onChange={(e) => setHydrometerSg(e.target.value)} type="number" step="0.0001" />
+          <input value={hydrometerBx} onChange={(e) => setHydrometerSg(e.target.value)} type="number" step="0.0001" />
         </label>
         {error ? <p className="error-text">{error}</p> : null}
         <div className="form-actions">

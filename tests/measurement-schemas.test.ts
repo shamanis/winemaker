@@ -61,8 +61,8 @@ describe('zod-схемы замеров', () => {
   })
 
   it('калибровочная пара: диапазоны входов', () => {
-    expect(calibrateSchema.safeParse({ instrumentId: 'i1', refrBrix: 21.5, hydrometerSg: 1.09 }).success).toBe(true)
-    expect(calibrateSchema.safeParse({ instrumentId: 'i1', refrBrix: 90, hydrometerSg: 1.09 }).success).toBe(false)
-    expect(calibrateSchema.safeParse({ instrumentId: 'i1', refrBrix: 21.5, hydrometerSg: 0.5 }).success).toBe(false)
+    expect(calibrateSchema.safeParse({ instrumentId: 'i1', refrBrix: 21.5, hydrometerBx: 21 }).success).toBe(true)
+    expect(calibrateSchema.safeParse({ instrumentId: 'i1', refrBrix: 90, hydrometerBx: 21 }).success).toBe(false)
+    expect(calibrateSchema.safeParse({ instrumentId: 'i1', refrBrix: 21.5, hydrometerBx: 95 }).success).toBe(false)
   })
 })

@@ -9,6 +9,7 @@ import {
   TERRILL_DOMAIN_RATIO
 } from './correction'
 import { novotny } from './novotny'
+import { HYDROMETER_TEMP_K } from './correction'
 
 /**
  * Пайплайн коррекции замера плотности (design D3): сырое показание →
@@ -22,7 +23,8 @@ export type CorrectionFormula = 'auto' | 'terrill' | 'linear'
 export interface PipelineInstrument {
   readonly type: string
   readonly wcf: number | null
-  readonly calibrationOffsetSg: number | null
+  /** Смещение показаний ареометра, °Bx. */
+  readonly calibrationOffsetBx: number | null
   readonly calibrationTempC?: number | null
   /** Есть персональная калибровочная пара (refractometer). */
   readonly hasCalibrationPair?: boolean
@@ -94,30 +96,40 @@ export function resolveMeasurement(
     throw new TypeError('Density measurement requires an instrument')
   }
 
-  /* Ареометр: [Brix→SG] → температура → калибровочное смещение */
+  /* Ареометр: шкала Brix — смещение и темп-коррекция в Bx, затем Bx → SG */
   if (isHydrometer(instrument.type)) {
-    let sg = input.rawValue
-    if (input.unit === 'brix') {
-      const converted = brixToSg(input.rawValue)
+    let b = input.unit === 'sg' ? invertBrixToSg(input.rawValue) : input.rawValue
+    if (input.unit === 'sg') {
       corrections.push({
-        type: 'brix-to-sg',
+        type: 'sg-to-brix',
         input: input.rawValue,
-        output: converted,
-        note: 'Перевод Brix → SG (показание ареометра в шкале Brix)'
+        output: b,
+        note: 'Показание в SG приведено к шкале Brix (прибор пользователя — Brix)'
       })
-      sg = converted
     }
 
+    if (instrument.calibrationOffsetBx != null && instrument.calibrationOffsetBx !== 0) {
+      const off = instrument.calibrationOffsetBx
+      corrections.push({
+        type: 'calibration-offset',
+        input: b,
+        output: b + off,
+        note: `Калибровочное смещение прибора ${off > 0 ? '+' : ''}${off} °Bx`
+      })
+      b += off
+    }
+
+    const sg0 = brixToSg(b)
+    let sg = sg0
     if (input.tempC != null) {
       const calibrationTempC = instrument.calibrationTempC ?? 20
-      const corrected = correctHydrometerTemp(sg, input.tempC, calibrationTempC)
+      sg = sg0 * (1 + HYDROMETER_TEMP_K * (input.tempC - calibrationTempC))
       corrections.push({
         type: 'hydrometer-temp',
-        input: sg,
-        output: corrected,
+        input: sg0,
+        output: sg,
         note: `Температурная коррекция к T_кал ${calibrationTempC} °C (сусло ${input.tempC} °C)`
       })
-      sg = corrected
       if (isTempOutOfApproximation(input.tempC)) {
         warnings.push(
           `Температура сусла ${input.tempC} °C вне зоны аппроксимации (10–35 °C) — поправка приблизительная, см. таблицу паспорта прибора`
@@ -125,18 +137,7 @@ export function resolveMeasurement(
       }
     }
 
-    if (instrument.calibrationOffsetSg != null && instrument.calibrationOffsetSg !== 0) {
-      const corrected = sg + instrument.calibrationOffsetSg
-      corrections.push({
-        type: 'calibration-offset',
-        input: sg,
-        output: corrected,
-        note: `Калибровочное смещение прибора ${instrument.calibrationOffsetSg > 0 ? '+' : ''}${instrument.calibrationOffsetSg} SG`
-      })
-      sg = corrected
-    }
-
-    return { correctedSg: sg, correctedBrix: null, corrections, warnings, infos: [] }
+    return { correctedSg: sg, correctedBrix: b, corrections, warnings, infos: [] }
   }
 
   /* Рефрактометр: до брожения WCF → SG; на брожении Террилл/Баллинг на сырых показаниях */
