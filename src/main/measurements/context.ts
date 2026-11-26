@@ -42,6 +42,7 @@ export function createResolveContextProvider(deps: {
         : null,
       correctionFormula: settings.success ? settings.data.correctionFormula : 'auto',
       startRawGravity: startParams.gravity.raw,
+      startCorrectedBrix: startParams.gravity.correctedBrix ?? null,
       startOgSg: startParams.gravity.ogSg,
       batchStartDateUtc: batch.batch.startDateUtc
     }

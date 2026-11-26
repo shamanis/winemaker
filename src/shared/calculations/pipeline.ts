@@ -5,8 +5,10 @@ import {
   invertBrixToSg,
   isTempOutOfApproximation,
   linearCorrection,
-  terrillCorrection
+  terrillCorrection,
+  TERRILL_DOMAIN_RATIO
 } from './correction'
+import { novotny } from './novotny'
 
 /**
  * Пайплайн коррекции замера плотности (design D3): сырое показание →
@@ -45,6 +47,8 @@ export interface PipelineContext {
   readonly startRawGravity?: { value: number; unit: DensityUnit } | null
   /** OG в SG (с WCF) — для линейной Баллинга (OE — истинный экстракт). */
   readonly startOgSg?: number | null
+  /** Истинный экстракт старта в °Bx (с WCF) — B₀ модели Новотного. */
+  readonly startCorrectedBrix?: number | null
   readonly batchStartDateUtc: string
 }
 
@@ -164,17 +168,35 @@ export function resolveMeasurement(
 
       const formula = ctx.correctionFormula
       let sg: number
-      // Авто-ярус (vision-notes: Террилл точен только после ~1/3 брожения,
-      // когда сырой Bf опускается до 0.5–0.6 от Bi; до того стабильна
-      // линейная модель). Ручной выбор в настройках переопределяет.
-      const TERRILL_ENTRY_RATIO = 0.55
-      const effectiveFormula =
-        formula === 'auto'
-          ? biRaw != null && bfRaw <= TERRILL_ENTRY_RATIO * biRaw
-            ? 'terrill'
-            : 'linear'
-          : formula
-      if (effectiveFormula === 'linear') {
+      if (formula === 'auto') {
+        // Основная модель хода брожения — двухкомпонентная Novotný
+        // (docs/refractometer.md): корректна на всём протяжении,
+        // даёт истинный экстракт B, крепость A и кажущуюся SG.
+        // R — показание с WCF; B₀ — истинный экстракт старта.
+        const r = bfRaw * (instrument.wcf ?? 1)
+        const b0 =
+          ctx.startCorrectedBrix ?? invertBrixToSg(ctx.startOgSg as number)
+        const n = novotny(r, b0)
+        if (!instrument.hasCalibrationPair) {
+          warnings.push(
+            'У рефрактометра нет калибровочной пары — коррекция ведётся по усреднённому коэффициенту (спека 6.3.5)'
+          )
+        }
+        corrections.push({
+          type: 'novotny-model',
+          input: bfRaw,
+          output: n.apparentSg,
+          note: `Двухкомпонентная модель (Novotný): R=${r.toFixed(2)} °Bx (с WCF), B₀=${b0.toFixed(2)} °Bx → истинный экстракт B=${n.trueExtractBx.toFixed(2)} °Bx, крепость ${n.abvPct.toFixed(1)} % об., итераций ${n.iterations}`
+        })
+        return {
+          correctedSg: n.apparentSg,
+          correctedBrix: n.trueExtractBx,
+          corrections,
+          warnings
+        }
+      }
+      // Ручной выбор формулы (переопределяет авто, design D4):
+      if (formula === 'linear') {
         // Баллинг: OE — истинный экстракт старта (из OG с WCF),
         // AE — кажущийся экстракт из сырого текущего показания.
         const oe = invertBrixToSg(ctx.startOgSg as number)
@@ -184,15 +206,29 @@ export function resolveMeasurement(
           type: 'fermentation-correction',
           input: bfRaw,
           output: sg,
-          note: `Линейная (Баллинг RE): OE=${oe.toFixed(2)} °P, AE=${ae.toFixed(2)} °P (Bi=${biRaw.toFixed(2)}, Bf=${bfRaw.toFixed(2)} °Bx сырые)${formula === 'auto' ? ' · авто: ранняя стадия' : ''}`
+          note: `Линейная (Баллинг RE): OE=${oe.toFixed(2)} °P, AE=${ae.toFixed(2)} °P (Bi=${biRaw.toFixed(2)}, Bf=${bfRaw.toFixed(2)} °Bx сырые)`
         })
       } else {
+        // Домен Террилла (docs): при R > 0.6·OG — отказ спиртовой коррекции
+        if (biRaw != null && bfRaw > TERRILL_DOMAIN_RATIO * biRaw) {
+          const naive = brixToSg(bfRaw)
+          warnings.push(
+            'Показание пока близко к стартовому — формула Террилла вне зоны применимости, использован сахарный эквивалент'
+          )
+          corrections.push({
+            type: 'terrill-domain-refusal',
+            input: bfRaw,
+            output: naive,
+            note: 'Отказ: R > 0.6·OG — экстраполяция кубической формулы нефизична'
+          })
+          return { correctedSg: naive, correctedBrix: null, corrections, warnings }
+        }
         sg = terrillCorrection(biRaw, bfRaw)
         corrections.push({
           type: 'fermentation-correction',
           input: bfRaw,
           output: sg,
-          note: `Формула Террилла: Bi=${biRaw.toFixed(2)}, Bf=${bfRaw.toFixed(2)} °Bx (сырые показания, без WCF)${formula === 'auto' ? ' · авто: после 1/3 брожения' : ''}`
+          note: `Формула Террилла: Bi=${biRaw.toFixed(2)}, Bf=${bfRaw.toFixed(2)} °Bx (сырые показания, без WCF)`
         })
       }
 

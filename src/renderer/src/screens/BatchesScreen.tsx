@@ -9,6 +9,8 @@ import {
   hallAbv,
   residualSugar
 } from '@shared/calculations/analysis'
+import { novotny } from '@shared/calculations/novotny'
+import { invertBrixToSg } from "@shared/calculations/correction"
 import { toUtcIso } from '@shared/time/utc'
 import { useBatchesStore, STATUS_LABELS, daysFromStart } from '../store/batches-store'
 import { useCatalogsStore, INSTRUMENT_TYPE_LABELS } from '../store/catalogs-store'
@@ -656,12 +658,31 @@ function CalculationsCard(props: { batch: BatchDto }): ReactElement {
   const { batch } = props
   const list = useMeasurementsStore((s) => s.byBatch[batch.id])
   const unit = useSettingsStore((s) => s.settings?.densityUnit ?? 'sg')
+  const instruments = useCatalogsStore((s) => s.instruments)
 
   const ogSg = batch.startParams.gravity.ogSg
   const last = lastDensityMeasurement(list)
   const fg = last?.correctedSg ?? null
 
-  const abv = ogSg != null && fg != null ? hallAbv(ogSg, fg) : null
+  // Крепость: если последний замер — рефрактометр, берём ABV из
+  // двухкомпонентной модели (docs/refractometer.md, «бесплатно» из той же
+  // системы уравнений); иначе — Hall по паре OG–FG.
+  const lastInstrument = last?.instrumentId
+    ? instruments.find((i) => i.id === last.instrumentId)
+    : null
+  const isRefractometer =
+    lastInstrument?.type.startsWith('refractometer') ?? false
+  const abv = useMemo(() => {
+    if (ogSg == null || fg == null) return null
+    if (isRefractometer && last) {
+      const b0 =
+        batch.startParams.gravity.correctedBrix ?? invertBrixToSg(ogSg)
+      const r = last.rawValue * (lastInstrument?.wcf ?? 1)
+      return novotny(r, b0).abvPct
+    }
+    return hallAbv(ogSg, fg)
+  }, [ogSg, fg, isRefractometer, last, batch, lastInstrument])
+
   const attenuation = ogSg != null && fg != null ? apparentAttenuation(ogSg, fg) : null
   const sugar = ogSg != null && fg != null ? residualSugar(ogSg, fg) : null
   const forecast = useMemo(
@@ -692,8 +713,11 @@ function CalculationsCard(props: { batch: BatchDto }): ReactElement {
         </dd>
       </dl>
       <p className="muted">
-        Расчёты по скорректированным значениям · формулы: Hall, Баллинг ·{' '}
-        <Term id="abv">подробнее в Справке</Term>
+        Расчёты по скорректированным значениям ·{' '}
+        {isRefractometer
+          ? 'крепость — модель Новотного'
+          : 'формулы: Hall, Баллинг'}{' '}
+        · <Term id="abv">подробнее в Справке</Term>
       </p>
     </div>
   )

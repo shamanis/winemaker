@@ -14,6 +14,8 @@ export const TEMP_OK_MAX_C = 30
 /** Границы предупреждения (vision): <10 или >35 °C — вне аппроксимации. */
 export const TEMP_WARN_MIN_C = 10
 export const TEMP_WARN_MAX_C = 35
+/** Домен Террилла (docs/refractometer.md): R должен опуститься до 0.6 от OG. */
+export const TERRILL_DOMAIN_RATIO = 0.6
 
 /** Коэффициент линейной коррекции (vision, k = 3.7e-4). */
 const TEMP_K = 3.7e-4

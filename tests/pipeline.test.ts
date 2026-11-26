@@ -7,6 +7,7 @@ const BASE_CTX = {
   correctionFormula: 'terrill' as const,
   startRawGravity: { value: 22, unit: 'brix' as const },
   startOgSg: 1.0919540,
+  startCorrectedBrix: 22.88, // 22 × 1.04 (WCF)
   batchStartDateUtc: '2026-11-25T10:00:00.000Z'
 }
 
@@ -63,11 +64,12 @@ describe('resolveMeasurement — пайплайн коррекции', () => {
     expect(r.warnings[0]).toContain('вне зоны аппроксимации')
   })
 
-  it('рефрактометр на бродящем суле: Террилл на СЫРЫХ показаниях + предупреждение без пары', () => {
+  it('ручной Террилл в домене (Bf ≤ 0.6·Bi): сырые показания + предупреждение без пары', () => {
     const r = resolveMeasurement(
-      { kind: 'density', rawValue: 14, unit: 'brix', tempC: null, measuredAtUtc: '2026-11-26T11:00:00.000Z' },
+      { kind: 'density', rawValue: 12, unit: 'brix', tempC: null, measuredAtUtc: '2026-11-26T11:00:00.000Z' },
       {
         ...BASE_CTX,
+        correctionFormula: 'terrill',
         instrument: { type: 'refractometer-atc', wcf: 1.04, calibrationOffsetSg: null, hasCalibrationPair: false }
       }
     )
@@ -77,18 +79,34 @@ describe('resolveMeasurement — пайплайн коррекции', () => {
     expect(r.warnings[0]).toContain('усреднённой формуле')
     const types = r.corrections.map((c) => c.type)
     expect(types).toEqual(['fermentation-correction'])
-    // Bi=22, Bf=14 сырые → пользовательский контрольный пример ≈ 11.5 °Bx / 1.0462 SG
+    // Bi=22, Bf=12 сырые (12 ≤ 0.6×22=13.2 — в домене)
     const expected =
       1 -
       0.0044993 * 22 +
-      0.011774 * 14 +
+      0.011774 * 12 +
       0.00027581 * 22 ** 2 -
-      0.0012717 * 14 ** 2 -
+      0.0012717 * 12 ** 2 -
       0.00000728 * 22 ** 3 +
-      0.000063293 * 14 ** 3
+      0.000063293 * 12 ** 3
     expect(r.correctedSg).toBeCloseTo(expected, 10)
-    expect(r.correctedSg).toBeGreaterThan(1.045)
-    expect(r.correctedSg).toBeLessThan(1.047)
+    expect(r.correctedSg).toBeGreaterThan(1.02)
+    expect(r.correctedSg).toBeLessThan(1.03)
+  })
+
+  it('ручной Террилл вне домена (R > 0.6·OG): предупреждение + сахарный эквивалент', () => {
+    const r = resolveMeasurement(
+      { kind: 'density', rawValue: 14, unit: 'brix', tempC: null, measuredAtUtc: '2026-11-26T11:00:00.000Z' },
+      {
+        ...BASE_CTX,
+        correctionFormula: 'terrill',
+        instrument: { type: 'refractometer-atc', wcf: 1.04, calibrationOffsetSg: null, hasCalibrationPair: false }
+      }
+    )
+    // 14 > 13.2 = 0.6×22 — эвристика docs: вне домена
+    const types = r.corrections.map((c) => c.type)
+    expect(types).toEqual(['terrill-domain-refusal'])
+    expect(r.correctedSg).toBeCloseTo(brixToSg(14), 10) // сахарный эквивалент
+    expect(r.warnings.some((w) => w.includes('вне зоны применимости'))).toBe(true)
   })
 
   it('линейная формула: OE из истинного OG, AE из сырого показания', () => {
@@ -113,57 +131,61 @@ describe('resolveMeasurement — пайплайн коррекции', () => {
     )
   })
 
-  it('ранняя стадия (Bf близко к Bi): Террилл экстраполирует абсурд — fallback на сахарный эквивалент', () => {
-    const r = resolveMeasurement(
-      { kind: 'density', rawValue: 18, unit: 'brix', tempC: null, measuredAtUtc: '2026-11-26T11:00:00.000Z' },
-      {
-        ...BASE_CTX,
-        instrument: { type: 'refractometer-atc', wcf: 1.04, calibrationOffsetSg: null, hasCalibrationPair: true }
-      }
-    )
-    // Террилл(22, 18.72) = 1.126 > OG 1.0959 — физически невозможно
-    const types = r.corrections.map((c) => c.type)
-    expect(types).toContain('early-fermentation-fallback')
-    expect(r.correctedSg).toBeLessThanOrEqual(1.09595)
-    expect(r.correctedSg).toBeCloseTo(brixToSg(18 * 1.04), 8) // 1.0777
-    expect(r.warnings.some((w) => w.includes('близок к стартовому'))).toBe(true)
-  })
-
-  it('авто: ранняя стадия (Bf > 0.55·Bi) — линейная, поздняя — Террилл', () => {
+  it('ранняя стадия (Bf близко к Bi): авто → Novotný физичен; ручной Террилл — отказ домена', () => {
     const instrument = { type: 'refractometer-atc', wcf: 1.04, calibrationOffsetSg: null, hasCalibrationPair: true }
-    const early = resolveMeasurement(
-      { kind: 'density', rawValue: 18, unit: 'brix', tempC: null, measuredAtUtc: '2026-11-26T11:00:00.000Z' },
-      { ...BASE_CTX, instrument, correctionFormula: 'auto' }
-    )
-    const late = resolveMeasurement(
-      { kind: 'density', rawValue: 8, unit: 'brix', tempC: null, measuredAtUtc: '2026-11-26T11:00:00.000Z' },
-      { ...BASE_CTX, instrument, correctionFormula: 'auto' }
-    )
-    // 18/22 = 0.82 > 0.55 → линейная зона
-    expect(early.corrections.at(-1)?.note).toContain('ранняя стадия')
-    // 8/22 = 0.36 ≤ 0.55 → зона Террилла
-    expect(late.corrections.at(-1)?.note).toContain('Террилла')
-  })
-
-  it('авто-результаты физически возможны (SG ≤ OG) и совпадают с ручным выбором', () => {
-    const instrument = { type: 'refractometer-atc', wcf: 1.04, calibrationOffsetSg: null, hasCalibrationPair: true }
-    for (const raw of [18, 14, 10, 8]) {
-      const r = resolveMeasurement(
-        { kind: 'density', rawValue: raw, unit: 'brix', tempC: null, measuredAtUtc: '2026-11-26T11:00:00.000Z' },
-        { ...BASE_CTX, instrument, correctionFormula: 'auto' }
-      )
-      expect(r.correctedSg).toBeLessThanOrEqual(BASE_CTX.startOgSg)
-    }
-    // авто-ранняя == ручная линейная
+    // Авто: модель Новотного корректна на ранней стадии — SG_app в физике
     const auto = resolveMeasurement(
       { kind: 'density', rawValue: 18, unit: 'brix', tempC: null, measuredAtUtc: '2026-11-26T11:00:00.000Z' },
       { ...BASE_CTX, instrument, correctionFormula: 'auto' }
     )
+    expect(auto.corrections.map((c) => c.type)).toEqual(['novotny-model'])
+    expect(auto.correctedSg).toBeLessThanOrEqual(BASE_CTX.startOgSg)
+
+    // Ручной Террилл: Bf=18 > 0.6×22=13.2 — отказ домена + сахарный эквивалент
     const manual = resolveMeasurement(
+      { kind: 'density', rawValue: 18, unit: 'brix', tempC: null, measuredAtUtc: '2026-11-26T11:00:00.000Z' },
+      { ...BASE_CTX, instrument, correctionFormula: 'terrill' }
+    )
+    expect(manual.corrections.map((c) => c.type)).toEqual(['terrill-domain-refusal'])
+    expect(manual.correctedSg).toBeCloseTo(brixToSg(18), 10)
+    expect(manual.warnings.some((w) => w.includes('вне зоны применимости'))).toBe(true)
+  })
+
+  it('авто: Novotný на любой стадии, SG ≤ OG, след содержит модель и ABV', () => {
+    const instrument = { type: 'refractometer-atc', wcf: 1.04, calibrationOffsetSg: null, hasCalibrationPair: true }
+    for (const raw of [22, 18, 14, 10, 8]) {
+      const r = resolveMeasurement(
+        { kind: 'density', rawValue: raw, unit: 'brix', tempC: null, measuredAtUtc: '2026-11-26T11:00:00.000Z' },
+        { ...BASE_CTX, instrument, correctionFormula: 'auto' }
+      )
+      expect(r.corrections.map((c) => c.type)).toEqual(['novotny-model'])
+      expect(r.correctedSg).toBeLessThanOrEqual(brixToSg(22.88)) // ≤ истинного OG
+      expect(r.correctedSg).toBeGreaterThan(0.99)
+      expect(r.correctedBrix).toBeGreaterThan(0)
+      expect(r.corrections[0]?.note).toContain('Novotný')
+      expect(r.corrections[0]?.note).toContain('% об.')
+    }
+  })
+
+  it('авто-результаты сходятся с контрольными точками модели', () => {
+    const instrument = { type: 'refractometer-atc', wcf: 1.04, calibrationOffsetSg: null, hasCalibrationPair: true }
+    // B₀ = 22×1.04 = 22.88; при R=8: SG_app ≈ 0.9989 (по контрольной таблице с WCF-масштабом)
+    const r = resolveMeasurement(
+      { kind: 'density', rawValue: 8, unit: 'brix', tempC: null, measuredAtUtc: '2026-11-26T11:00:00.000Z' },
+      { ...BASE_CTX, instrument, correctionFormula: 'auto' }
+    )
+    expect(r.correctedSg).toBeGreaterThan(0.99)
+    expect(r.correctedSg).toBeLessThan(1.02)
+  })
+
+  it('ручной выбор переопределяет авто (линейная на ранней стадии — Баллинг)', () => {
+    const instrument = { type: 'refractometer-atc', wcf: 1.04, calibrationOffsetSg: null, hasCalibrationPair: true }
+    const r = resolveMeasurement(
       { kind: 'density', rawValue: 18, unit: 'brix', tempC: null, measuredAtUtc: '2026-11-26T11:00:00.000Z' },
       { ...BASE_CTX, instrument, correctionFormula: 'linear' }
     )
-    expect(auto.correctedSg).toBeCloseTo(manual.correctedSg as number, 10)
+    expect(r.corrections.map((c) => c.type)).toEqual(['fermentation-correction'])
+    expect(r.corrections[0]?.note).toContain('Баллинг RE')
   })
 
   it('замер до/в момент постановки — без ферментной коррекции', () => {
