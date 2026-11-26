@@ -113,6 +113,22 @@ describe('resolveMeasurement — пайплайн коррекции', () => {
     )
   })
 
+  it('ранняя стадия (Bf близко к Bi): Террилл экстраполирует абсурд — fallback на сахарный эквивалент', () => {
+    const r = resolveMeasurement(
+      { kind: 'density', rawValue: 18, unit: 'brix', tempC: null, measuredAtUtc: '2026-11-26T11:00:00.000Z' },
+      {
+        ...BASE_CTX,
+        instrument: { type: 'refractometer-atc', wcf: 1.04, calibrationOffsetSg: null, hasCalibrationPair: true }
+      }
+    )
+    // Террилл(22, 18.72) = 1.126 > OG 1.0959 — физически невозможно
+    const types = r.corrections.map((c) => c.type)
+    expect(types).toContain('early-fermentation-fallback')
+    expect(r.correctedSg).toBeLessThanOrEqual(1.09595)
+    expect(r.correctedSg).toBeCloseTo(brixToSg(18 * 1.04), 8) // 1.0777
+    expect(r.warnings.some((w) => w.includes('близок к стартовому'))).toBe(true)
+  })
+
   it('замер до/в момент постановки — без ферментной коррекции', () => {
     const r = resolveMeasurement(
       { kind: 'density', rawValue: 22, unit: 'brix', tempC: null, measuredAtUtc: '2026-11-25T10:00:00.000Z' },

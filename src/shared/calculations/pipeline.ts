@@ -185,6 +185,26 @@ export function resolveMeasurement(
           note: `Формула Террилла: Bi=${biRaw.toFixed(2)}, Bf=${bfRaw.toFixed(2)} °Bx (сырые показания, без WCF)`
         })
       }
+
+      // Физическая граница: алкоголь лишь понижает плотность, результат
+      // не может превысить OG. Регрессии (Террилл/Баллинг) построены на
+      // сброженных точках и абсурдно экстраполируют при Bf близко к Bi —
+      // тогда показание трактуется как «спирта ещё нет»: сахарный
+      // эквивалент с WCF (как до брожения) + предупреждение.
+      const ogSg = ctx.startOgSg as number
+      if (sg > ogSg) {
+        const fallbackSg = brixToSg(bfRaw * (instrument.wcf ?? 1))
+        corrections.push({
+          type: 'early-fermentation-fallback',
+          input: sg,
+          output: fallbackSg,
+          note: 'Bf близко к Bi — формула вне зоны применимости: использован сахарный эквивалент показания (с WCF)'
+        })
+        warnings.push(
+          'Замер близок к стартовому — спиртовая коррекция неприменима, использован сахарный эквивалент (WCF)'
+        )
+        sg = fallbackSg
+      }
       return { correctedSg: sg, correctedBrix: null, corrections, warnings }
     }
 
