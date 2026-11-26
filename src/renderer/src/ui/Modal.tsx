@@ -1,4 +1,5 @@
 import { useEffect, useRef, type ReactElement, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 
 const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
 
@@ -6,6 +7,10 @@ const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabi
  * Единая модалка приложения: Escape и клик по фону закрывают, Tab не
  * выходит за пределы диалога, фокус на первый контрол при открытии.
  * Все диалоги строятся на нём (design: ui primitives layer).
+ *
+ * Рендерится порталом в document.body: модалка не должна оказаться
+ * внутри <form> вызывающего экрана — вложенная форма ломает обработку
+ * submit (React не получает событие, и страница уходит в перезагрузку).
  */
 export function Modal(props: {
   title: string
@@ -48,7 +53,7 @@ export function Modal(props: {
     return () => document.removeEventListener('keydown', onKeyDown)
   }, [])
 
-  return (
+  return createPortal(
     <div
       className="modal-overlay"
       onMouseDown={(e) => {
@@ -65,6 +70,7 @@ export function Modal(props: {
         <h3>{props.title}</h3>
         {props.children}
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }

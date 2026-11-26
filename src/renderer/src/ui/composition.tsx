@@ -1,11 +1,13 @@
 import { useState, type FormEvent, type ReactElement } from 'react'
 import type { AdditionInput, AdditionKind, StrainDto, YeastInput } from '@shared/ipc/contracts'
 import { api } from '../api'
+import { useCatalogsStore } from '../store/catalogs-store'
 import { Modal } from './Modal'
 
 /**
- * Редакторы состава партии (спека batch-management 1.3–1.4): дрожжи
- * (штамм из справочника или разовое имя) и стартовые добавки.
+ * Редакторы состава партии (спека batch-management 1.3–1.4): дрожжи —
+ * только штамм из справочника («ровно один способ»; нет в справочнике —
+ * создаётся там же через модалку), и стартовые добавки.
  */
 
 export const ADDITION_KIND_LABELS: Record<AdditionKind, string> = {
@@ -32,8 +34,6 @@ export function doseUnitLabel(u: string): string {
 
 export interface YeastRow {
   strainId: string
-  strainName: string
-  producer: string
   doseAmount: string
   doseUnit: DoseUnit
   addedAt: string
@@ -52,8 +52,6 @@ export interface AdditionRow {
 export function emptyYeastRow(): YeastRow {
   return {
     strainId: '',
-    strainName: '',
-    producer: '',
     doseAmount: '',
     doseUnit: 'g',
     addedAt: new Date().toISOString().slice(0, 10),
@@ -72,14 +70,12 @@ export function emptyAdditionRow(): AdditionRow {
   }
 }
 
-/** Строки UI → вход IPC (даты в ISO UTC). */
+/** Строки UI → вход IPC (даты в ISO UTC). Только штаммы из справочника. */
 export function yeastRowsToInput(rows: YeastRow[]): YeastInput[] {
   return rows
-    .filter((r) => r.strainName.trim() !== '')
+    .filter((r) => r.strainId !== '')
     .map((r) => ({
-      strainId: r.strainId || null,
-      strainName: r.strainName.trim(),
-      producer: r.producer.trim() || null,
+      strainId: r.strainId,
       doseAmount: Number(r.doseAmount),
       doseUnit: r.doseUnit,
       addedAtUtc: `${r.addedAt}T12:00:00.000Z`,
@@ -132,8 +128,6 @@ export function yeastFromDto(
 ): YeastRow[] {
   return items.map((y) => ({
     strainId: y.strainId ?? '',
-    strainName: y.strainName,
-    producer: y.producer ?? '',
     doseAmount: y.doseAmount != null ? String(y.doseAmount) : '',
     doseUnit: (DOSE_UNITS.some(d => d.value === y.doseUnit) ? y.doseUnit : 'g') as DoseUnit,
     addedAt: y.addedAtUtc.slice(0, 10),
@@ -166,7 +160,7 @@ const isoSafe = (n: number): boolean => Number.isFinite(n) && n > 0
 /** Валидация строк перед сохранением: текст ошибки или null. */
 export function validateYeastRows(rows: YeastRow[]): string | null {
   for (const [i, r] of rows.entries()) {
-    if (r.strainName.trim() === '') continue // пустые строки пропускаются
+    if (r.strainId === '') continue // пустые строки пропускаются
     if (!isoSafe(Number(r.doseAmount))) return `Дрожжи, строка ${i + 1}: укажите дозировку числом`
     if (!/^\d{4}-\d{2}-\d{2}$/.test(r.addedAt)) return `Дрожжи, строка ${i + 1}: укажите дату внесения`
   }
@@ -182,12 +176,94 @@ export function validateAdditionRows(rows: AdditionRow[]): string | null {
   return null
 }
 
+const NEW_STRAIN = '__new__'
+
+/** Быстрое создание штамма из формы партии: попадает в справочник и в строку. */
+function NewStrainModal(props: {
+  onCreated(strain: StrainDto): void
+  onClose(): void
+}): ReactElement {
+  const createStrain = useCatalogsStore((s) => s.createStrain)
+  const [error, setError] = useState<string | null>(null)
+
+  const submit = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
+    event.preventDefault()
+    setError(null)
+    const form = event.currentTarget
+    const data = new FormData(form)
+    const name = String(data.get('name') ?? '').trim()
+    if (name === '') {
+      setError('Укажите название штамма')
+      return
+    }
+    const num = (key: string): number | null => {
+      const raw = String(data.get(key) ?? '').trim()
+      return raw ? Number(raw) : null
+    }
+    try {
+      const created = await createStrain({
+        name,
+        producer: String(data.get('producer') ?? '').trim() || null,
+        tempMinC: num('tempMinC'),
+        tempMaxC: num('tempMaxC'),
+        alcoholTolerancePct: num('alcoholTolerancePct'),
+        notes: String(data.get('notes') ?? '').trim() || null
+      })
+      props.onCreated(created)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    }
+  }
+
+  return (
+    <Modal title="Новый штамм дрожжей" onClose={props.onClose}>
+      <form
+        onSubmit={(e) => {
+          void submit(e)
+        }}
+        className="form-grid"
+      >
+        <label>
+          Название *
+          <input name="name" required placeholder="Lalvin EC-1118" />
+        </label>
+        <label>
+          Производитель
+          <input name="producer" placeholder="Lallemand" />
+        </label>
+        <label>
+          t° мин, °C
+          <input name="tempMinC" type="number" step="1" />
+        </label>
+        <label>
+          t° макс, °C
+          <input name="tempMaxC" type="number" step="1" />
+        </label>
+        <label>
+          Толерантность к спирту, % об.
+          <input name="alcoholTolerancePct" type="number" step="0.5" />
+        </label>
+        <label>
+          Заметки
+          <input name="notes" />
+        </label>
+        {error ? <p className="error-text">{error}</p> : null}
+        <div className="form-actions">
+          <button type="submit">Создать и выбрать</button>
+          <button type="button" onClick={props.onClose}>Отмена</button>
+        </div>
+      </form>
+    </Modal>
+  )
+}
+
 export function YeastRowsEditor(props: {
   rows: YeastRow[]
   onChange(rows: YeastRow[]): void
   strains: StrainDto[]
 }): ReactElement {
   const { rows, onChange, strains } = props
+  const [creatingFor, setCreatingFor] = useState<number | null>(null)
   const update = (idx: number, patch: Partial<YeastRow>): void => {
     onChange(rows.map((r, i) => (i === idx ? { ...r, ...patch } : r)))
   }
@@ -202,34 +278,19 @@ export function YeastRowsEditor(props: {
               <select
                 value={row.strainId}
                 onChange={(e) => {
-                  const strain = strains.find((s) => s.id === e.target.value)
-                  update(idx, {
-                    strainId: e.target.value,
-                    strainName: strain ? strain.name : row.strainName,
-                    producer: strain ? strain.producer ?? '' : row.producer
-                  })
+                  if (e.target.value === NEW_STRAIN) {
+                    setCreatingFor(idx)
+                    return
+                  }
+                  update(idx, { strainId: e.target.value })
                 }}
               >
-                <option value="">— вручную —</option>
+                <option value="">— выберите штамм —</option>
                 {strains.map((s) => (
                   <option key={s.id} value={s.id}>{s.name}</option>
                 ))}
+                <option value={NEW_STRAIN}>＋ Новый штамм…</option>
               </select>
-            </label>
-            <label>
-              Название штамма
-              <input
-                value={row.strainName}
-                onChange={(e) => update(idx, { strainName: e.target.value })}
-                placeholder="Lalvin EC-1118"
-              />
-            </label>
-            <label>
-              Производитель
-              <input
-                value={row.producer}
-                onChange={(e) => update(idx, { producer: e.target.value })}
-              />
             </label>
           </div>
           <div className="inline-fields">
@@ -281,6 +342,15 @@ export function YeastRowsEditor(props: {
       <button type="button" onClick={() => onChange([...rows, emptyYeastRow()])}>
         + Добавить дрожжи
       </button>
+      {creatingFor != null ? (
+        <NewStrainModal
+          onCreated={(strain) => {
+            update(creatingFor, { strainId: strain.id })
+            setCreatingFor(null)
+          }}
+          onClose={() => setCreatingFor(null)}
+        />
+      ) : null}
     </div>
   )
 }

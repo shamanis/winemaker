@@ -37,15 +37,7 @@ const BASE_INPUT = {
     ph: 3.4,
     tempC: 20
   },
-  yeast: [
-    {
-      strainName: 'Lalvin EC-1118',
-      producer: 'Lallemand',
-      doseAmount: 5,
-      doseUnit: 'g',
-      addedAtUtc: '2026-11-25T10:05:00.000Z'
-    }
-  ],
+  yeast: [],
   additions: [
     {
       name: 'Диаммонийфосфат',
@@ -58,22 +50,48 @@ const BASE_INPUT = {
 }
 
 describe('BatchRepository', () => {
-  it('создание транзакцией: партия + OG в SG + дрожжи + добавки + история постановки', () => {
+  it('создание транзакцией: партия + OG в SG + дрожжи (резолв по strainId) + добавки + история', () => {
     const handle = openMemory()
-    const { batch } = makeRepo(handle)
+    const { batch, strains } = makeRepo(handle)
+    const strain = strains.create({
+      name: 'Lalvin EC-1118',
+      producer: 'Lallemand',
+      tempMinC: null,
+      tempMaxC: null,
+      alcoholTolerancePct: null,
+      notes: null
+    })
 
-    const full = batch.create(BASE_INPUT)
+    const full = batch.create({
+      ...BASE_INPUT,
+      yeast: [{ strainId: strain.id, doseAmount: 5, doseUnit: 'g', addedAtUtc: '2026-11-25T10:05:00.000Z' }]
+    })
     expect(full.batch.status).toBe('fermenting')
     const params = full.batch.startParams as { gravity: { raw: unknown; ogSg: number } }
     expect(params.gravity.raw).toEqual({ value: 22, unit: 'brix', instrumentId: null })
     // 22 Bx -> ~1.092 SG (формула из vision)
     expect(params.gravity.ogSg).toBeGreaterThan(1.0915)
     expect(params.gravity.ogSg).toBeLessThan(1.0925)
+    // имя/производитель резолвит сервер по strainId, а не принимает от клиента
     expect(full.yeast).toHaveLength(1)
+    expect(full.yeast[0]?.strainId).toBe(strain.id)
+    expect(full.yeast[0]?.strainName).toBe('Lalvin EC-1118')
+    expect(full.yeast[0]?.producer).toBe('Lallemand')
     expect(full.additions).toHaveLength(1)
     expect(full.history).toHaveLength(1)
     expect(full.history[0]?.fromStatus).toBeNull()
     expect(full.history[0]?.toStatus).toBe('fermenting')
+  })
+
+  it('create: yeast с неизвестным strainId отклоняется (только справочник)', () => {
+    const handle = openMemory()
+    const { batch } = makeRepo(handle)
+    expect(() =>
+      batch.create({
+        ...BASE_INPUT,
+        yeast: [{ strainId: 'no-such-strain', doseAmount: 5, doseUnit: 'g', addedAtUtc: '2026-11-25T10:05:00.000Z' }]
+      })
+    ).toThrow(/Штамм не найден/)
   })
 
   it('OG вычисляется с WCF прибора при вводе в Brix', () => {
@@ -196,7 +214,7 @@ describe('BatchRepository', () => {
     const created = batch.create({
       ...BASE_INPUT,
       yeast: [
-        { strainId: strain.id, strainName: 'EC-1118', doseAmount: 5, doseUnit: 'g', addedAtUtc: '2026-11-25T10:05:00.000Z' }
+        { strainId: strain.id, doseAmount: 5, doseUnit: 'g', addedAtUtc: '2026-11-25T10:05:00.000Z' }
       ]
     })
 

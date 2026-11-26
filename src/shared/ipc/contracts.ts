@@ -104,10 +104,13 @@ export const startParamsDtoSchema = z.object({
 })
 export type StartParamsDto = z.infer<typeof startParamsDtoSchema>
 
+/**
+ * Дрожжи партии: ровно один способ — ссылка на штамм справочника.
+ * Наименование и производитель сервер резолвит по strainId сам
+ * (и сохраняет снапшот на случай удаления штамма из справочника).
+ */
 export const yeastInputSchema = z.object({
-  strainId: z.string().nullable().optional(),
-  strainName: z.string().min(1),
-  producer: z.string().nullable().optional(),
+  strainId: z.string().min(1),
   doseAmount: z.number().positive(),
   doseUnit: z.enum(['g', 'ml', 'packet', 'tablet']),
   addedAtUtc: z.string(),
@@ -115,7 +118,12 @@ export const yeastInputSchema = z.object({
 })
 export type YeastInput = z.infer<typeof yeastInputSchema>
 
-export const yeastDtoSchema = yeastInputSchema.extend({ id: z.string(), batchId: z.string() })
+export const yeastDtoSchema = yeastInputSchema.extend({
+  id: z.string(),
+  batchId: z.string(),
+  strainName: z.string(),
+  producer: z.string().nullable().optional()
+})
 export type YeastDto = z.infer<typeof yeastDtoSchema>
 
 export const additionKindSchema = z.enum(['nutrient', 'enzyme', 'so2', 'sugar', 'acid', 'other'])

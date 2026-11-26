@@ -6,12 +6,14 @@ import {
   batchStatusHistory,
   batchYeast,
   instruments,
+  yeastStrains,
   type BatchAdditionRow,
   type BatchRow,
   type BatchStatusHistoryRow,
   type BatchYeastRow,
   type NewBatchAdditionRow,
-  type NewBatchYeastRow
+  type NewBatchYeastRow,
+  type YeastStrainRow
 } from '../db/schema'
 import type { AppDatabase } from '../db/database'
 import { nowUtcIso } from '../../shared/time/utc'
@@ -28,10 +30,9 @@ export const BATCH_STATUSES = [
 
 export type BatchStatus = (typeof BATCH_STATUSES)[number]
 
+/** Штамм партии — только ссылка на справочник; имя/производитель резолвит сервер. */
 export interface BatchYeastInput {
-  strainId?: string | null
-  strainName: string
-  producer?: string | null
+  strainId: string
   doseAmount: number
   doseUnit: string
   addedAtUtc: string
@@ -140,12 +141,13 @@ export class BatchRepository {
       this.insertStatusHistory(batch.id, null, 'fermenting', input.startDateUtc)
 
       for (const yeast of input.yeast) {
+        const strain = this.resolveStrain(yeast.strainId)
         const row: NewBatchYeastRow = {
           id: randomUUID(),
           batchId: batch.id,
-          strainId: yeast.strainId ?? null,
-          strainName: yeast.strainName,
-          producer: yeast.producer ?? null,
+          strainId: strain.id,
+          strainName: strain.name,
+          producer: strain.producer ?? null,
           doseAmount: yeast.doseAmount,
           doseUnit: yeast.doseUnit,
           addedAtUtc: yeast.addedAtUtc,
@@ -267,12 +269,13 @@ export class BatchRepository {
     this.db.transaction((tx) => {
       tx.delete(batchYeast).where(eq(batchYeast.batchId, batchId)).run()
       for (const yeast of rows) {
+        const strain = this.resolveStrain(yeast.strainId)
         tx.insert(batchYeast).values({
           id: randomUUID(),
           batchId,
-          strainId: yeast.strainId ?? null,
-          strainName: yeast.strainName,
-          producer: yeast.producer ?? null,
+          strainId: strain.id,
+          strainName: strain.name,
+          producer: strain.producer ?? null,
           doseAmount: yeast.doseAmount,
           doseUnit: yeast.doseUnit,
           addedAtUtc: yeast.addedAtUtc,
@@ -282,6 +285,18 @@ export class BatchRepository {
     })
     this.markDirty()
     return this.get(batchId)
+  }
+
+  /**
+   * Штамм партии — только ссылка на справочник («ровно один способ»):
+   * наименование и производитель резолвятся по strainId на сервере.
+   */
+  private resolveStrain(strainId: string): YeastStrainRow {
+    const strain = this.db.select().from(yeastStrains).where(eq(yeastStrains.id, strainId)).get()
+    if (!strain) {
+      throw new Error(`Штамм не найден в справочнике: ${strainId}`)
+    }
+    return strain
   }
 
   /** Заменяет состав стартовых добавок партии целиком. */
