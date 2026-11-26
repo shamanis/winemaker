@@ -603,6 +603,19 @@ body {
   stroke-width: 2;
 }
 
+.chart-line-raw {
+  fill: none;
+  stroke: var(--color-text-muted);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+  opacity: 0.7;
+}
+
+.chart-point-raw {
+  fill: var(--color-text-muted);
+  opacity: 0.6;
+}
+
 .chart-waterline {
   stroke: var(--color-border);
   stroke-dasharray: 4 4;
