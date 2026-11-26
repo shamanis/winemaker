@@ -2,6 +2,7 @@ import { useEffect, useRef, type ReactElement } from 'react'
 import { useAppStore } from './store/app-store'
 import { useUiStore, TAB_ORDER, type ScreenTab } from './store/ui-store'
 import { useSettingsStore } from './store/settings-store'
+import { useCatalogsStore } from './store/catalogs-store'
 import { BatchesScreen } from './screens/BatchesScreen'
 import { CatalogsScreen } from './screens/CatalogsScreen'
 import { SettingsScreen } from './screens/SettingsScreen'
@@ -33,6 +34,9 @@ export function App(): ReactElement {
     void initUi()
     // Единицы плотности нужны на всех экранах (форматтеры) — грузим сразу.
     void useSettingsStore.getState().init()
+    // Справочники тоже: раньше они грузились только из карточки партии /
+    // формы замера, и вкладка «Справочники» при прямом заходе была пустой.
+    void useCatalogsStore.getState().init()
   }, [bootstrap, initUi])
 
   useHotkeys({
