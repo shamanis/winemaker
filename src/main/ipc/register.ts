@@ -28,7 +28,7 @@ export interface IpcContext {
 }
 
 const SETTINGS_KEY = 'settings'
-const DEFAULT_SETTINGS = { densityUnit: 'sg', correctionFormula: 'terrill' } as const
+const DEFAULT_SETTINGS = { densityUnit: 'sg', correctionFormula: 'auto' } as const
 
 /**
  * Регистрирует все IPC-хендлеры с валидацией на границе (design.md D3):

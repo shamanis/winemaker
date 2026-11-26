@@ -40,7 +40,7 @@ export function createResolveContextProvider(deps: {
             hasCalibrationPair: instrument.calibrationPair != null
           }
         : null,
-      correctionFormula: settings.success ? settings.data.correctionFormula : 'terrill',
+      correctionFormula: settings.success ? settings.data.correctionFormula : 'auto',
       startRawGravity: startParams.gravity.raw,
       startOgSg: startParams.gravity.ogSg,
       batchStartDateUtc: batch.batch.startDateUtc

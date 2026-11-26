@@ -24,7 +24,9 @@ export function SettingsScreen(): ReactElement {
     const formula = form.get('correctionFormula')
     const patch: Parameters<typeof update>[0] = {}
     if (unit === 'sg' || unit === 'brix') patch['densityUnit'] = unit
-    if (formula === 'terrill' || formula === 'linear') patch['correctionFormula'] = formula
+    if (formula === 'auto' || formula === 'terrill' || formula === 'linear') {
+      patch['correctionFormula'] = formula
+    }
     void update(patch)
   }
 
@@ -42,13 +44,16 @@ export function SettingsScreen(): ReactElement {
         <label>
           Формула коррекции рефрактометра
           <select name="correctionFormula" defaultValue={settings.correctionFormula}>
-            <option value="terrill">Точная (кубическая формула Террилла)</option>
-            <option value="linear">Упрощённая (линейная)</option>
+            <option value="auto">Авто — по стадии брожения (рекомендуется)</option>
+            <option value="terrill">Точная — кубическая формула Террилла (после 1/3 брожения)</option>
+            <option value="linear">Упрощённая — линейная (Баллинг)</option>
           </select>
         </label>
         <p className="muted">
           Настройки применяются ко всем экранам и сохраняются автоматически.
-          Формула коррекции станет значением по умолчанию в замерах рефрактометром.
+          В режиме «Авто» замеры до прохождения ~1/3 брожения корректируются
+          линейной моделью (стабильна на всём этапе), далее — кубической
+          формулой Террилла (точна в своей зоне).
         </p>
       </form>
     </section>

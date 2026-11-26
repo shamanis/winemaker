@@ -15,7 +15,7 @@ import {
 
 export type MeasurementKind = 'density' | 'temperature' | 'ph'
 export type DensityUnit = 'sg' | 'brix'
-export type CorrectionFormula = 'terrill' | 'linear'
+export type CorrectionFormula = 'auto' | 'terrill' | 'linear'
 
 export interface PipelineInstrument {
   readonly type: string
@@ -164,7 +164,17 @@ export function resolveMeasurement(
 
       const formula = ctx.correctionFormula
       let sg: number
-      if (formula === 'linear') {
+      // Авто-ярус (vision-notes: Террилл точен только после ~1/3 брожения,
+      // когда сырой Bf опускается до 0.5–0.6 от Bi; до того стабильна
+      // линейная модель). Ручной выбор в настройках переопределяет.
+      const TERRILL_ENTRY_RATIO = 0.55
+      const effectiveFormula =
+        formula === 'auto'
+          ? biRaw != null && bfRaw <= TERRILL_ENTRY_RATIO * biRaw
+            ? 'terrill'
+            : 'linear'
+          : formula
+      if (effectiveFormula === 'linear') {
         // Баллинг: OE — истинный экстракт старта (из OG с WCF),
         // AE — кажущийся экстракт из сырого текущего показания.
         const oe = invertBrixToSg(ctx.startOgSg as number)
@@ -174,7 +184,7 @@ export function resolveMeasurement(
           type: 'fermentation-correction',
           input: bfRaw,
           output: sg,
-          note: `Линейная (Баллинг RE): OE=${oe.toFixed(2)} °P, AE=${ae.toFixed(2)} °P (Bi=${biRaw.toFixed(2)}, Bf=${bfRaw.toFixed(2)} °Bx сырые)`
+          note: `Линейная (Баллинг RE): OE=${oe.toFixed(2)} °P, AE=${ae.toFixed(2)} °P (Bi=${biRaw.toFixed(2)}, Bf=${bfRaw.toFixed(2)} °Bx сырые)${formula === 'auto' ? ' · авто: ранняя стадия' : ''}`
         })
       } else {
         sg = terrillCorrection(biRaw, bfRaw)
@@ -182,7 +192,7 @@ export function resolveMeasurement(
           type: 'fermentation-correction',
           input: bfRaw,
           output: sg,
-          note: `Формула Террилла: Bi=${biRaw.toFixed(2)}, Bf=${bfRaw.toFixed(2)} °Bx (сырые показания, без WCF)`
+          note: `Формула Террилла: Bi=${biRaw.toFixed(2)}, Bf=${bfRaw.toFixed(2)} °Bx (сырые показания, без WCF)${formula === 'auto' ? ' · авто: после 1/3 брожения' : ''}`
         })
       }
 

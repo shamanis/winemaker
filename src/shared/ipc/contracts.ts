@@ -221,7 +221,7 @@ export type BatchCreateInput = z.infer<typeof batchCreateSchema>
 
 export const settingsSchema = z.object({
   densityUnit: z.enum(['sg', 'brix']),
-  correctionFormula: z.enum(['terrill', 'linear'])
+  correctionFormula: z.enum(['auto', 'terrill', 'linear'])
 })
 export type AppSettings = z.infer<typeof settingsSchema>
 

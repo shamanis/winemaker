@@ -63,8 +63,9 @@ describe('zod-схемы доменов (add-catalogs-and-batches)', () => {
     expect(channel.request.safeParse({ id: 'x', to: 'drinking' }).success).toBe(false)
   })
 
-  it('настройки: только SG/Brix и Террилл/линейная', () => {
+  it('настройки: авто/Террилл/линейная — валидные значения', () => {
     expect(settingsSchema.safeParse({ densityUnit: 'sg', correctionFormula: 'terrill' }).success).toBe(true)
+    expect(settingsSchema.safeParse({ densityUnit: 'sg', correctionFormula: 'auto' }).success).toBe(true)
     expect(settingsSchema.safeParse({ densityUnit: 'plato', correctionFormula: 'terrill' }).success).toBe(false)
     expect(settingsSchema.safeParse({ densityUnit: 'brix', correctionFormula: 'magic' }).success).toBe(false)
   })

@@ -129,6 +129,43 @@ describe('resolveMeasurement — пайплайн коррекции', () => {
     expect(r.warnings.some((w) => w.includes('близок к стартовому'))).toBe(true)
   })
 
+  it('авто: ранняя стадия (Bf > 0.55·Bi) — линейная, поздняя — Террилл', () => {
+    const instrument = { type: 'refractometer-atc', wcf: 1.04, calibrationOffsetSg: null, hasCalibrationPair: true }
+    const early = resolveMeasurement(
+      { kind: 'density', rawValue: 18, unit: 'brix', tempC: null, measuredAtUtc: '2026-11-26T11:00:00.000Z' },
+      { ...BASE_CTX, instrument, correctionFormula: 'auto' }
+    )
+    const late = resolveMeasurement(
+      { kind: 'density', rawValue: 8, unit: 'brix', tempC: null, measuredAtUtc: '2026-11-26T11:00:00.000Z' },
+      { ...BASE_CTX, instrument, correctionFormula: 'auto' }
+    )
+    // 18/22 = 0.82 > 0.55 → линейная зона
+    expect(early.corrections.at(-1)?.note).toContain('ранняя стадия')
+    // 8/22 = 0.36 ≤ 0.55 → зона Террилла
+    expect(late.corrections.at(-1)?.note).toContain('Террилла')
+  })
+
+  it('авто-результаты физически возможны (SG ≤ OG) и совпадают с ручным выбором', () => {
+    const instrument = { type: 'refractometer-atc', wcf: 1.04, calibrationOffsetSg: null, hasCalibrationPair: true }
+    for (const raw of [18, 14, 10, 8]) {
+      const r = resolveMeasurement(
+        { kind: 'density', rawValue: raw, unit: 'brix', tempC: null, measuredAtUtc: '2026-11-26T11:00:00.000Z' },
+        { ...BASE_CTX, instrument, correctionFormula: 'auto' }
+      )
+      expect(r.correctedSg).toBeLessThanOrEqual(BASE_CTX.startOgSg)
+    }
+    // авто-ранняя == ручная линейная
+    const auto = resolveMeasurement(
+      { kind: 'density', rawValue: 18, unit: 'brix', tempC: null, measuredAtUtc: '2026-11-26T11:00:00.000Z' },
+      { ...BASE_CTX, instrument, correctionFormula: 'auto' }
+    )
+    const manual = resolveMeasurement(
+      { kind: 'density', rawValue: 18, unit: 'brix', tempC: null, measuredAtUtc: '2026-11-26T11:00:00.000Z' },
+      { ...BASE_CTX, instrument, correctionFormula: 'linear' }
+    )
+    expect(auto.correctedSg).toBeCloseTo(manual.correctedSg as number, 10)
+  })
+
   it('замер до/в момент постановки — без ферментной коррекции', () => {
     const r = resolveMeasurement(
       { kind: 'density', rawValue: 22, unit: 'brix', tempC: null, measuredAtUtc: '2026-11-25T10:00:00.000Z' },
