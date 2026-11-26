@@ -100,6 +100,24 @@ export function additionRowsToInput(rows: AdditionRow[]): AdditionInput[] {
     }))
 }
 
+/**
+ * Имя и производитель штамма для показа в партии: штамм — ссылка на
+ * справочник (strain_id), поэтому актуальные имя/производитель берём из
+ * каталога — переименование в справочнике отражается в существующих
+ * партиях. Снапшот в записи партии нужен только когда штамм удалён из
+ * справочника или вносился вручную без ссылки.
+ */
+export function resolveStrainDisplay(
+  entry: { strainId?: string | null; strainName: string; producer?: string | null },
+  strains: ReadonlyArray<{ id: string; name: string; producer?: string | null }>
+): { name: string; producer: string | null } {
+  const live = entry.strainId
+    ? strains.find((s) => s.id === entry.strainId)
+    : undefined
+  if (live) return { name: live.name, producer: live.producer ?? entry.producer ?? null }
+  return { name: entry.strainName, producer: entry.producer ?? null }
+}
+
 /** DTO-записи партии → строки UI (для редактирования в карточке). */
 export function yeastFromDto(
   items: ReadonlyArray<{

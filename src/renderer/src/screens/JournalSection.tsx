@@ -4,7 +4,8 @@ import { STATUS_LABELS } from '../store/batches-store'
 import { useOperationsStore, OPERATION_KIND_LABELS } from '../store/operations-store'
 import { useMeasurementsStore } from '../store/measurements-store'
 import { useBatchesStore } from '../store/batches-store'
-import { doseUnitLabel } from '../ui/composition'
+import { doseUnitLabel, resolveStrainDisplay } from '../ui/composition'
+import { useCatalogsStore } from '../store/catalogs-store'
 import { Modal } from '../ui/Modal'
 
 const KIND_LABELS_MEASUREMENT: Record<string, string> = {
@@ -38,6 +39,7 @@ export function JournalSection(props: { batch: BatchDto }): ReactElement {
   const history = useBatchesStore((s) => s.selected?.history)
   const yeast = useBatchesStore((s) => s.selected?.yeast)
   const additions = useBatchesStore((s) => s.selected?.additions)
+  const strains = useCatalogsStore((s) => s.strains)
 
   const [editing, setEditing] = useState<OperationDto | null>(null)
   const [formOpen, setFormOpen] = useState(false)
@@ -72,14 +74,17 @@ export function JournalSection(props: { batch: BatchDto }): ReactElement {
       detail: '',
       notes: o.notes
     })),
-    ...(yeast ?? []).map((y) => ({
-      id: `y-${y.id}`,
-      atUtc: y.addedAtUtc,
-      kind: 'operation' as const,
-      label: 'Дрожжи внесены',
-      detail: `${y.strainName}${y.producer ? ` (${y.producer})` : ''} — ${y.doseAmount} ${doseUnitLabel(y.doseUnit)}`,
-      notes: null
-    })),
+    ...(yeast ?? []).map((y) => {
+      const strain = resolveStrainDisplay(y, strains)
+      return {
+        id: `y-${y.id}`,
+        atUtc: y.addedAtUtc,
+        kind: 'operation' as const,
+        label: 'Дрожжи внесены',
+        detail: `${strain.name}${strain.producer ? ` (${strain.producer})` : ''} — ${y.doseAmount} ${doseUnitLabel(y.doseUnit)}`,
+        notes: null
+      }
+    }),
     ...(additions ?? []).map((a) => ({
       id: `a-${a.id}`,
       atUtc: a.addedAtUtc,

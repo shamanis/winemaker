@@ -28,6 +28,7 @@ import {
   yeastFromDto,
   additionsFromDto,
   doseUnitLabel,
+  resolveStrainDisplay,
   CompositionDialog,
   type YeastRow,
   type AdditionRow
@@ -551,12 +552,15 @@ function BatchCard(props: { full: BatchFullDto; onBack(): void; onDelete(): void
                 <p className="muted">Не внесены</p>
               ) : (
                 <ul>
-                  {full.yeast.map((y) => (
-                    <li key={y.id}>
-                      {y.strainName}
-                      {y.producer ? ` (${y.producer})` : ''} — {y.doseAmount} {doseUnitLabel(y.doseUnit)}
-                    </li>
-                  ))}
+                  {full.yeast.map((y) => {
+                    const strain = resolveStrainDisplay(y, strains)
+                    return (
+                      <li key={y.id}>
+                        {strain.name}
+                        {strain.producer ? ` (${strain.producer})` : ''} — {y.doseAmount} {doseUnitLabel(y.doseUnit)}
+                      </li>
+                    )
+                  })}
                 </ul>
               )}
               <button type="button" onClick={() => setCompositionDialog('yeast')}>
