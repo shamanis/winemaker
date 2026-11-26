@@ -1,0 +1,93 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#5f1226"/>
+      <stop offset="55%" stop-color="#470d1f"/>
+      <stop offset="100%" stop-color="#360816"/>
+    </linearGradient>
+    <linearGradient id="wine" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#c24060"/>
+      <stop offset="100%" stop-color="#8e1b3d"/>
+    </linearGradient>
+    <linearGradient id="glassSheen" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f2e6d8" stop-opacity="0.55"/>
+      <stop offset="100%" stop-color="#f2e6d8" stop-opacity="0.12"/>
+    </linearGradient>
+  </defs>
+
+  <!-- фон -->
+  <rect width="1024" height="1024" rx="230" fill="url(#bg)"/>
+  <rect width="1024" height="1024" rx="230" fill="none" stroke="#f2e6d8" stroke-opacity="0.08" stroke-width="6"/>
+
+  <!-- бутылка (слева) -->
+  <g>
+    <!-- фольга на горлышке -->
+    <rect x="282" y="168" width="60" height="132" rx="16" fill="url(#wine)"/>
+    <!-- силуэт: горлышко -> плечи -> корпус -->
+    <path d="M 284 292
+             L 284 420
+             C 284 468, 224 486, 224 566
+             L 224 818
+             Q 224 852, 258 852
+             L 366 852
+             Q 400 852, 400 818
+             L 400 566
+             C 400 486, 340 468, 340 420
+             L 340 292
+             Z"
+          fill="#f2e6d8"/>
+    <!-- этикетка -->
+    <rect x="240" y="612" width="144" height="150" rx="10" fill="url(#wine)"/>
+    <rect x="252" y="624" width="120" height="126" rx="6" fill="none" stroke="#f2e6d8" stroke-opacity="0.5" stroke-width="4"/>
+    <!-- блик на бутылке -->
+    <path d="M 252 470 L 252 800" stroke="#ffffff" stroke-opacity="0.25" stroke-width="10" stroke-linecap="round"/>
+  </g>
+
+  <!-- бокал (справа) -->
+  <g>
+    <!-- чаша с вином -->
+    <path d="M 566 320
+             L 794 320
+             C 794 462, 736 566, 700 592
+             L 700 592
+             L 660 592
+             L 660 592
+             C 624 566, 566 462, 566 320
+             Z"
+          fill="url(#wine)"/>
+    <!-- ножка и основание -->
+    <rect x="668" y="592" width="24" height="168" rx="8" fill="#f2e6d8"/>
+    <ellipse cx="680" cy="780" rx="98" ry="20" fill="#f2e6d8"/>
+    <!-- ободок бокала -->
+    <path d="M 566 320 L 794 320" stroke="#f2e6d8" stroke-width="10" stroke-linecap="round"/>
+    <!-- блик на чаше -->
+    <path d="M 604 350 C 604 430, 622 500, 650 545" stroke="url(#glassSheen)" stroke-width="14" stroke-linecap="round" fill="none"/>
+  </g>
+
+  <!-- гроздь (внизу по центру) -->
+  <g>
+    <!-- усик и лист -->
+    <path d="M 480 640 C 476 600, 452 578, 420 566" stroke="#4a7c3f" stroke-width="12" stroke-linecap="round" fill="none"/>
+    <path d="M 356 596 C 366 556, 412 544, 444 568 C 424 604, 384 614, 356 596 Z" fill="#4a7c3f"/>
+    <!-- ягоды -->
+    <g fill="#5b2a86" stroke="#3d1c5c" stroke-width="6">
+      <circle cx="432" cy="700" r="46"/>
+      <circle cx="524" cy="700" r="46"/>
+      <circle cx="388" cy="788" r="46"/>
+      <circle cx="478" cy="788" r="46"/>
+      <circle cx="568" cy="788" r="46"/>
+      <circle cx="432" cy="872" r="46"/>
+      <circle cx="524" cy="872" r="46"/>
+    </g>
+    <!-- блики на ягодах -->
+    <g fill="#ffffff" fill-opacity="0.28">
+      <circle cx="416" cy="684" r="13"/>
+      <circle cx="508" cy="684" r="13"/>
+      <circle cx="372" cy="772" r="13"/>
+      <circle cx="462" cy="772" r="13"/>
+      <circle cx="552" cy="772" r="13"/>
+      <circle cx="416" cy="856" r="13"/>
+      <circle cx="508" cy="856" r="13"/>
+    </g>
+  </g>
+</svg>

@@ -133,8 +133,13 @@ function migrationsFolder(): string {
 
 function createWindow(): void {
   const bounds = repo?.get<Rectangle>('windowBounds')
+  // Иконка окна: важна для Windows/Linux; macOS берёт icns из бандла.
+  const windowIcon = app.isPackaged
+    ? join(process.resourcesPath, 'icon.png')
+    : join(app.getAppPath(), 'build', 'icon.png')
 
   mainWindow = new BrowserWindow({
+    icon: windowIcon,
     width: bounds?.width ?? 1024,
     height: bounds?.height ?? 720,
     x: bounds?.x,

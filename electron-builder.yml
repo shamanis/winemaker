@@ -1,5 +1,6 @@
 appId: io.github.winemaker.desktop
 productName: Winemaker
+icon: build/icon.png
 directories:
   output: release
 files:
@@ -9,6 +10,9 @@ extraResources:
   # Миграции кладутся в resources/ рядом с asar — читаются реальным fs.
   - from: drizzle
     to: drizzle
+  # Иконка окна для Windows/Linux (macOS берёт icns из icon.png).
+  - from: build/icon.png
+    to: icon.png
 asarUnpack:
   # utility process запускается из реального файла на диске.
   - out/main/utility.js
