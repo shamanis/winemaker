@@ -296,8 +296,14 @@ export function MeasurementsSection(props: { batch: BatchDto }): ReactElement {
     <section className="measurements">
       <div className="screen-header">
         <h3>Замеры</h3>
-        <button type="button" onClick={() => setDialogOpen(true)}>
-          Замер
+        <button
+          type="button"
+          className="btn-fab"
+          title="Новый замер"
+          aria-label="Новый замер"
+          onClick={() => setDialogOpen(true)}
+        >
+          +
         </button>
       </div>
 
