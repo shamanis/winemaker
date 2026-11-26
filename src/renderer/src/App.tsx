@@ -85,11 +85,34 @@ export function App(): ReactElement {
         <button
           type="button"
           className="theme-toggle"
-          aria-label="Переключить тему"
+          aria-label={theme === 'dark' ? 'Переключить на светлую тему' : 'Переключить на тёмную тему'}
           title={`${HOTKEYS.toggleTheme} — переключить тему`}
           onClick={toggleTheme}
         >
-          {theme === 'dark' ? 'Светлая тема' : 'Тёмная тема'}
+          {theme === 'dark' ? (
+            /* солнышко: клик переключит на светлую */
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+              <circle cx="12" cy="12" r="4.4" fill="currentColor" />
+              <g stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+                <line x1="12" y1="2.2" x2="12" y2="4.6" />
+                <line x1="12" y1="19.4" x2="12" y2="21.8" />
+                <line x1="2.2" y1="12" x2="4.6" y2="12" />
+                <line x1="19.4" y1="12" x2="21.8" y2="12" />
+                <line x1="4.8" y1="4.8" x2="6.5" y2="6.5" />
+                <line x1="17.5" y1="17.5" x2="19.2" y2="19.2" />
+                <line x1="4.8" y1="19.2" x2="6.5" y2="17.5" />
+                <line x1="17.5" y1="6.5" x2="19.2" y2="4.8" />
+              </g>
+            </svg>
+          ) : (
+            /* полумесяц: клик переключит на тёмную */
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+              <path
+                d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"
+                fill="currentColor"
+              />
+            </svg>
+          )}
         </button>
       </header>
 
