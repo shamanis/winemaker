@@ -240,9 +240,11 @@ export type CorrectionStepDto = z.infer<typeof correctionStepSchema>
 
 export const correctionsSchema = z.object({
   steps: z.array(correctionStepSchema),
-  warnings: z.array(z.string())
+  warnings: z.array(z.string()),
+  infos: z.array(z.string()).optional()
 })
 export type CorrectionsDto = z.infer<typeof correctionsSchema>
+// infos — информационные сообщения (не ошибки), опциональны для совместимости со старыми записями
 
 export const measurementDtoSchema = z.object({
   id: z.string(),

@@ -726,6 +726,12 @@ body {
   margin: 0;
 }
 
+/* Информационные сообщения модели (не ошибки) */
+.info-text {
+  color: var(--color-text-muted);
+  margin: 0.25rem 0 0;
+}
+
 /* Редактор состава партии (дрожжи/добавки) */
 .rows-editor {
   display: flex;

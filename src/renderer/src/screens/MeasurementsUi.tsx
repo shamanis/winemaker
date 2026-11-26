@@ -243,6 +243,9 @@ export function MeasurementDialog(props: {
                   {preview.resolved.warnings.map((w) => (
                     <p key={w} className="error-text">⚠ {w}</p>
                   ))}
+                  {preview.resolved.infos.map((i) => (
+                    <p key={i} className="info-text">ℹ {i}</p>
+                  ))}
                 </>
               ) : null}
             </div>
@@ -301,6 +304,7 @@ export function MeasurementsSection(props: { batch: BatchDto }): ReactElement {
       <ul className="item-list">
         {(list ?? []).map((m) => {
           const warnings = (m.corrections as { warnings?: string[] }).warnings ?? []
+          const infos = (m.corrections as { infos?: string[] }).infos ?? []
           return (
             <li key={m.id}>
             <button
@@ -314,7 +318,7 @@ export function MeasurementsSection(props: { batch: BatchDto }): ReactElement {
                 {m.kind === 'density'
                   ? `${m.rawValue} ${m.unit === 'brix' ? '°Bx' : 'SG'} → ${formatDensity(m.correctedSg, densityUnit)}`
                   : `${m.rawValue} ${m.kind === 'temperature' ? '°C' : 'pH'}`}
-                {warnings.length > 0 ? ' ⚠' : ''}
+                {warnings.length > 0 ? ' ⚠' : ''}{infos.length > 0 ? ' ℹ' : ''}
               </div>
               <div className="muted">{m.measuredAtUtc.slice(0, 16).replace('T', ' ')} UTC</div>
             </button>
@@ -398,8 +402,9 @@ function MeasurementDetail(props: {
 }): ReactElement {
   const { measurement: m, onClose } = props
   const densityUnit = useSettingsStore((s) => s.settings?.densityUnit ?? 'sg')
-  const steps = (m.corrections as { steps?: Array<{ type: string; input: number; output: number; note?: string }>; warnings?: string[] }).steps ?? []
+  const steps = (m.corrections as { steps?: Array<{ type: string; input: number; output: number; note?: string }>; warnings?: string[]; infos?: string[] }).steps ?? []
   const warnings = (m.corrections as { warnings?: string[] }).warnings ?? []
+  const infos = (m.corrections as { infos?: string[] }).infos ?? []
   const instrument = useCatalogsStore((s) => s.instruments.find((i) => i.id === m.instrumentId))
 
   return (
@@ -442,6 +447,9 @@ function MeasurementDetail(props: {
         </ol>
         {warnings.map((w) => (
           <p key={w} className="error-text">⚠ {w}</p>
+        ))}
+        {infos.map((i) => (
+          <p key={i} className="info-text">ℹ {i}</p>
         ))}
 
       <div className="form-actions">

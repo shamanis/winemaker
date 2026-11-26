@@ -33,6 +33,7 @@ export type ResolveContextProvider = (
 export interface StoredCorrections {
   steps: ResolvedMeasurement['corrections']
   warnings: ResolvedMeasurement['warnings']
+  infos: ResolvedMeasurement['infos']
 }
 
 /**
@@ -81,7 +82,7 @@ export class MeasurementRepository {
       tempC: input.tempC ?? null,
       correctedSg: resolved.correctedSg,
       correctedBrix: resolved.correctedBrix,
-      corrections: { steps: resolved.corrections, warnings: resolved.warnings },
+      corrections: { steps: resolved.corrections, warnings: resolved.warnings, infos: resolved.infos },
       measuredAtUtc: input.measuredAtUtc,
       notes: input.notes ?? null,
       createdAtUtc: now,

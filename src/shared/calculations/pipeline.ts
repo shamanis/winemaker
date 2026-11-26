@@ -64,7 +64,10 @@ export interface ResolvedMeasurement {
   readonly correctedSg: number | null
   readonly correctedBrix: number | null
   readonly corrections: CorrectionStep[]
+  /** Ошибки/предупреждения — красным в UI. */
   readonly warnings: string[]
+  /** Информационные сообщения — нейтральным стилем (не ошибка). */
+  readonly infos: string[]
 }
 
 const isHydrometer = (type: string): boolean => type === 'hydrometer'
@@ -81,7 +84,7 @@ export function resolveMeasurement(
   ctx: PipelineContext
 ): ResolvedMeasurement {
   if (input.kind !== 'density') {
-    return { correctedSg: null, correctedBrix: null, corrections: [], warnings: [] }
+    return { correctedSg: null, correctedBrix: null, corrections: [], warnings: [], infos: [] }
   }
 
   const corrections: CorrectionStep[] = []
@@ -133,7 +136,7 @@ export function resolveMeasurement(
       sg = corrected
     }
 
-    return { correctedSg: sg, correctedBrix: null, corrections, warnings }
+    return { correctedSg: sg, correctedBrix: null, corrections, warnings, infos: [] }
   }
 
   /* Рефрактометр: до брожения WCF → SG; на брожении Террилл/Баллинг на сырых показаниях */
@@ -163,7 +166,7 @@ export function resolveMeasurement(
           ? input.rawValue
           : invertBrixToSg(input.rawValue)
       if (biRaw == null) {
-        return { correctedSg: null, correctedBrix: null, corrections, warnings }
+        return { correctedSg: null, correctedBrix: null, corrections, warnings, infos: [] }
       }
 
       const formula = ctx.correctionFormula
@@ -182,6 +185,12 @@ export function resolveMeasurement(
             'У рефрактометра нет калибровочной пары — коррекция ведётся по усреднённому коэффициенту (спека 6.3.5)'
           )
         }
+        const infos: string[] = []
+        if (biRaw != null && bfRaw > 0.6 * biRaw) {
+          infos.push(
+            'Показание близко к стартовому — спиртовая коррекция ещё не требуется, применена двухкомпонентная модель Новотного'
+          )
+        }
         corrections.push({
           type: 'novotny-model',
           input: bfRaw,
@@ -192,9 +201,38 @@ export function resolveMeasurement(
           correctedSg: n.apparentSg,
           correctedBrix: n.trueExtractBx,
           corrections,
-          warnings
+          warnings,
+          infos
         }
       }
+      // Ранняя стадия (docs: R > 0.6·Bi): эмпирические формулы вне зоны
+      // применимости — работает двухкомпонентная модель Новотного.
+      // Это информация для пользователя, не ошибка.
+      const infos: string[] = []
+      const earlyStage = biRaw != null && bfRaw > 0.6 * biRaw
+      if (earlyStage) {
+        infos.push(
+          'Показание близко к стартовому — для коррекции использована двухкомпонентная модель Новотного'
+        )
+        const r = bfRaw * (instrument.wcf ?? 1)
+        const b0 =
+          ctx.startCorrectedBrix ?? invertBrixToSg(ctx.startOgSg as number)
+        const n = novotny(r, b0)
+        corrections.push({
+          type: 'novotny-model',
+          input: bfRaw,
+          output: n.apparentSg,
+          note: `Двухкомпонентная модель (Novotný): R=${r.toFixed(2)} °Bx (с WCF), B₀=${b0.toFixed(2)} °Bx → истинный экстракт B=${n.trueExtractBx.toFixed(2)} °Bx, крепость ${n.abvPct.toFixed(1)} % об.`
+        })
+        return {
+          correctedSg: n.apparentSg,
+          correctedBrix: n.trueExtractBx,
+          corrections,
+          warnings,
+          infos
+        }
+      }
+
       // Ручной выбор формулы (переопределяет авто, design D4):
       if (formula === 'linear') {
         // Баллинг: OE — истинный экстракт старта (из OG с WCF),
@@ -209,20 +247,6 @@ export function resolveMeasurement(
           note: `Линейная (Баллинг RE): OE=${oe.toFixed(2)} °P, AE=${ae.toFixed(2)} °P (Bi=${biRaw.toFixed(2)}, Bf=${bfRaw.toFixed(2)} °Bx сырые)`
         })
       } else {
-        // Домен Террилла (docs): при R > 0.6·OG — отказ спиртовой коррекции
-        if (biRaw != null && bfRaw > TERRILL_DOMAIN_RATIO * biRaw) {
-          const naive = brixToSg(bfRaw)
-          warnings.push(
-            'Показание пока близко к стартовому — формула Террилла вне зоны применимости, использован сахарный эквивалент'
-          )
-          corrections.push({
-            type: 'terrill-domain-refusal',
-            input: bfRaw,
-            output: naive,
-            note: 'Отказ: R > 0.6·OG — экстраполяция кубической формулы нефизична'
-          })
-          return { correctedSg: naive, correctedBrix: null, corrections, warnings }
-        }
         sg = terrillCorrection(biRaw, bfRaw)
         corrections.push({
           type: 'fermentation-correction',
@@ -232,26 +256,25 @@ export function resolveMeasurement(
         })
       }
 
-      // Физическая граница: алкоголь лишь понижает плотность, результат
-      // не может превысить OG. Регрессии (Террилл/Баллинг) построены на
-      // сброженных точках и абсурдно экстраполируют при Bf близко к Bi —
-      // тогда показание трактуется как «спирта ещё нет»: сахарный
-      // эквивалент с WCF (как до брожения) + предупреждение.
+      // Страховка физической границы: результат не может превысить OG.
       const ogSg = ctx.startOgSg as number
       if (sg > ogSg) {
-        const fallbackSg = brixToSg(bfRaw * (instrument.wcf ?? 1))
-        corrections.push({
-          type: 'early-fermentation-fallback',
-          input: sg,
-          output: fallbackSg,
-          note: 'Bf близко к Bi — формула вне зоны применимости: использован сахарный эквивалент показания (с WCF)'
-        })
-        warnings.push(
-          'Замер близок к стартовому — спиртовая коррекция неприменима, использован сахарный эквивалент (WCF)'
+        const r = bfRaw * (instrument.wcf ?? 1)
+        const b0 =
+          ctx.startCorrectedBrix ?? invertBrixToSg(ctx.startOgSg as number)
+        const n = novotny(r, b0)
+        infos.push(
+          'Показание близко к стартовому — применена двухкомпонентная модель Новотного'
         )
-        sg = fallbackSg
+        corrections.push({
+          type: 'novotny-model',
+          input: bfRaw,
+          output: n.apparentSg,
+          note: 'Результат эмпирической формулы нефизичен — применена двухкомпонентная модель Новотного'
+        })
+        sg = n.apparentSg
       }
-      return { correctedSg: sg, correctedBrix: null, corrections, warnings }
+      return { correctedSg: sg, correctedBrix: null, corrections, warnings, infos }
     }
 
     // До брожения: WCF meaningful (сахарный эквивалент сусла).
@@ -278,16 +301,16 @@ export function resolveMeasurement(
       output: sg,
       note: 'До начала брожения — перевод Brix → SG'
     })
-    return { correctedSg: sg, correctedBrix, corrections, warnings }
+    return { correctedSg: sg, correctedBrix, corrections, warnings, infos: [] }
   }
 
   /* Иной прибор: считаем показание уже в SG */
   if (input.unit === 'brix') {
     const sg = brixToSg(input.rawValue)
     corrections.push({ type: 'brix-to-sg', input: input.rawValue, output: sg })
-    return { correctedSg: sg, correctedBrix: null, corrections, warnings }
+    return { correctedSg: sg, correctedBrix: null, corrections, warnings, infos: [] }
   }
-  return { correctedSg: input.rawValue, correctedBrix: null, corrections, warnings }
+  return { correctedSg: input.rawValue, correctedBrix: null, corrections, warnings, infos: [] }
 }
 
 export { computePersonalWcf }
