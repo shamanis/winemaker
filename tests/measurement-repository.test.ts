@@ -93,7 +93,8 @@ describe('MeasurementRepository', () => {
     expect(m.correctedSg).toBeLessThan(1.05)
     const stored = m.corrections as { steps: unknown[]; warnings: string[] }
     expect(stored.steps.length).toBeGreaterThanOrEqual(1)
-    expect(stored.warnings).toHaveLength(1) // нет калибровочной пары
+    // у REFRACTOMETER задан WCF вручную — персональный коэффициент есть, предупреждения нет
+    expect(stored.warnings).toHaveLength(0)
   })
 
   it('delete: снапшот action=delete переживает удаление записи', () => {

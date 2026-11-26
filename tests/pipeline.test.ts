@@ -66,7 +66,7 @@ describe('resolveMeasurement — пайплайн коррекции', () => {
     expect(r.warnings[0]).toContain('вне зоны аппроксимации')
   })
 
-  it('ручной Террилл в домене (Bf ≤ 0.6·Bi): сырые показания + предупреждение без пары', () => {
+  it('ручной Террилл в домене (Bf ≤ 0.6·Bi): сырые показания, ручной WCF — без предупреждений', () => {
     const r = resolveMeasurement(
       { kind: 'density', rawValue: 12, unit: 'brix', tempC: null, measuredAtUtc: '2026-11-26T11:00:00.000Z' },
       {
@@ -77,8 +77,8 @@ describe('resolveMeasurement — пайплайн коррекции', () => {
     )
     // WCF к текущему показанию НЕ применяется (регрессия Террилла на сырых)
     expect(r.correctedBrix).toBeNull()
-    expect(r.warnings).toHaveLength(1)
-    expect(r.warnings[0]).toContain('усреднённой формуле')
+    // Персональный WCF есть (задан вручную) — предупреждения о калибровке нет
+    expect(r.warnings).toHaveLength(0)
     const types = r.corrections.map((c) => c.type)
     expect(types).toEqual(['fermentation-correction'])
     // Bi=22, Bf=12 сырые (12 ≤ 0.6×22=13.2 — в домене)
@@ -109,8 +109,22 @@ describe('resolveMeasurement — пайплайн коррекции', () => {
     expect(types).toEqual(['novotny-model'])
     expect(r.correctedSg).toBeLessThanOrEqual(BASE_CTX.startOgSg)
     expect(r.infos.some((i) => i.includes('близко к стартовому'))).toBe(true)
-    expect(r.warnings).toHaveLength(1) // только «усреднённый коэффициент»
-    expect(r.warnings[0]).toContain('усреднённой формуле')
+    // ручной WCF 1.04 задан — предупреждения о калибровке нет
+    expect(r.warnings).toHaveLength(0)
+  })
+
+  it('нет ни пары, ни ручного WCF: предупреждение о поправке ×1.0', () => {
+    const r = resolveMeasurement(
+      { kind: 'density', rawValue: 12, unit: 'brix', tempC: null, measuredAtUtc: '2026-11-26T11:00:00.000Z' },
+      {
+        ...BASE_CTX,
+        correctionFormula: 'terrill',
+        instrument: { type: 'refractometer-atc', wcf: null, calibrationOffsetBx: null, hasCalibrationPair: false }
+      }
+    )
+    expect(r.warnings).toHaveLength(1)
+    expect(r.warnings[0]).toContain('нет персонального WCF')
+    expect(r.warnings[0]).toContain('без поправки')
   })
 
   it('линейная формула: OE из истинного OG, AE из сырого показания (в домене — 12 ≤ 13.2)', () => {

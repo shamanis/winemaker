@@ -76,6 +76,10 @@ const isHydrometer = (type: string): boolean => type === 'hydrometer'
 const isRefractometer = (type: string): boolean =>
   type === 'refractometer-atc' || type === 'refractometer'
 
+/** Нет ни калибровочной пары, ни ручного WCF — показания идут без поправки. */
+const NO_PERSONAL_WCF_WARNING =
+  'У рефрактометра нет персонального WCF (ни калибровочной пары, ни заданного вручную) — показание используется без поправки (коэффициент 1.0)'
+
 /**
  * Вычисляет скорректированный SG замера. Для temperature/ph значение
  * сохраняется как есть. Бросает TypeError, если у замера плотности нет прибора
@@ -146,13 +150,10 @@ export function resolveMeasurement(
       ctx.startOgSg != null && input.measuredAtUtc > ctx.batchStartDateUtc
 
     if (fermenting) {
-      // Предупреждение об усреднённой коррекции действует и здесь (спека 6.3.5):
-      // без пары применён усреднённый WCF для OG, а регрессия Террилла —
-      // по среднему суслу.
-      if (!instrument.hasCalibrationPair) {
-        warnings.push(
-          'У рефрактометра нет калибровочной пары — коррекция ведётся по усреднённой формуле (спека 6.3.5)'
-        )
+      // Без персонального коэффициента (ни пары, ни ручного WCF) показание
+      // идёт в расчёт без поправки — предупреждаем.
+      if (instrument.wcf == null) {
+        warnings.push(NO_PERSONAL_WCF_WARNING)
       }
       // Формула Террилла регрессирована на СЫРЫХ показаниях (без WCF):
       // алкогольное искажение уже учтено в регрессии (design: correction inputs).
@@ -181,10 +182,8 @@ export function resolveMeasurement(
         const b0 =
           ctx.startCorrectedBrix ?? invertBrixToSg(ctx.startOgSg as number)
         const n = novotny(r, b0)
-        if (!instrument.hasCalibrationPair) {
-          warnings.push(
-            'У рефрактометра нет калибровочной пары — коррекция ведётся по усреднённому коэффициенту (спека 6.3.5)'
-          )
+        if (instrument.wcf == null) {
+          warnings.push(NO_PERSONAL_WCF_WARNING)
         }
         const infos: string[] = []
         if (biRaw != null && bfRaw > 0.6 * biRaw) {
@@ -286,13 +285,13 @@ export function resolveMeasurement(
       input: input.rawValue,
       output: correctedBrix,
       note: instrument.hasCalibrationPair
-        ? `Персональный WCF прибора ${wcf}`
-        : `Усреднённый WCF ${wcf} — калибровочная пара не задана`
+        ? `Персональный WCF из калибровочной пары: ${wcf}`
+        : instrument.wcf != null
+          ? `WCF прибора (задан вручную): ${wcf}`
+          : 'WCF не задан — показание без поправки (коэффициент 1.0)'
     })
-    if (!instrument.hasCalibrationPair) {
-      warnings.push(
-        'У рефрактометра нет калибровочной пары — коррекция ведётся по усреднённому коэффициенту (спека 6.3.5)'
-      )
+    if (instrument.wcf == null) {
+      warnings.push(NO_PERSONAL_WCF_WARNING)
     }
 
     const sg = brixToSg(correctedBrix)
