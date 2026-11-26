@@ -104,6 +104,12 @@ export function MeasurementDialog(props: {
   const instrument = instruments.find((i) => i.id === instrumentId) ?? null
   const isHydrometer = instrument?.type === 'hydrometer'
 
+  // Ареометры пользователя имеют только шкалу Brix — при выборе ареометра
+  // единицы переключаются на °Bx автоматически.
+  useEffect(() => {
+    if (instrument?.type === 'hydrometer') setUnit('brix')
+  }, [instrument?.type])
+
   const preview = useMemo(() => {
     const value = Number(rawValue)
     if (kind !== 'density' || rawValue.trim() === '' || !Number.isFinite(value)) return null

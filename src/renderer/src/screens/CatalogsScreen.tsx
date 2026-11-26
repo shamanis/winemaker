@@ -117,13 +117,13 @@ function InstrumentsTab(): ReactElement {
           <input name="wcf" type="number" step="0.001" min="1" max="1.3" defaultValue={editing?.wcf ?? ''} />
         </label>
         <label>
-          Калибровочное смещение SG (для ареометра)
+          Калибровочное смещение, °Bx (для ареометра)
           <input
             name="calibrationOffsetBx"
             type="number"
-            step="0.0001"
-            min="-0.05"
-            max="0.05"
+            step="0.1"
+            min="-5"
+            max="5"
             defaultValue={editing?.calibrationOffsetBx ?? ''}
           />
         </label>
@@ -153,7 +153,7 @@ function InstrumentsTab(): ReactElement {
             <div>
               <strong>{instrument.name}</strong> — {INSTRUMENT_TYPE_LABELS[instrument.type]}
               {instrument.wcf ? `, WCF ${instrument.wcf}` : ''}
-              {instrument.calibrationOffsetBx ? `, смещение ${instrument.calibrationOffsetBx > 0 ? '+' : ''}${instrument.calibrationOffsetBx} SG` : ''}
+              {instrument.calibrationOffsetBx ? `, смещение ${instrument.calibrationOffsetBx > 0 ? '+' : ''}${instrument.calibrationOffsetBx} °Bx` : ''}
               {instrument.type === 'hydrometer' && instrument.calibrationTempC != null ? `, T_кал ${instrument.calibrationTempC} °C` : ''}
               {instrument.calibrationPair ? ', калибрована по паре' : ''}
             </div>
@@ -190,28 +190,28 @@ function CalibrationDialog(props: {
 }): ReactElement {
   const { instrument } = props
   const [refrBrix, setRefrBrix] = useState('')
-  const [hydrometerBx, setHydrometerSg] = useState('')
+  const [hydrometerBx, setHydrometerBx] = useState('')
   const [error, setError] = useState<string | null>(null)
 
   const submit = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault()
     setError(null)
     const b = Number(refrBrix)
-    const sg = Number(hydrometerBx)
-    if (!Number.isFinite(b) || refrBrix.trim() === '' || !Number.isFinite(sg) || hydrometerBx.trim() === '') {
+    const bx = Number(hydrometerBx)
+    if (!Number.isFinite(b) || refrBrix.trim() === '' || !Number.isFinite(bx) || hydrometerBx.trim() === '') {
       setError('Введите оба показания')
       return
     }
     if (b < 0 || b > 80) {
-      setError('Brix вне диапазона 0–80')
+      setError('Показание рефрактометра вне диапазона 0–80 °Bx')
       return
     }
-    if (sg < 0.9 || sg > 1.2) {
-      setError('SG вне диапазона 0.9–1.2')
+    if (bx < 0 || bx > 80) {
+      setError('Показание ареометра вне диапазона 0–80 °Bx')
       return
     }
     try {
-      await props.onConfirm(b, sg)
+      await props.onConfirm(b, bx)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     }
@@ -222,17 +222,18 @@ function CalibrationDialog(props: {
       <form className="modal" onSubmit={(e) => void submit(e)}>
         <h3>Калибровка — {instrument.name}</h3>
         <p className="muted">
-          Отмерьте один образец сусла и замерьте его обоими приборами:
-          персональный WCF вычислится из пары и будет применяться к замерам
-          этого рефрактометра вместо усреднённого.
+          Отмерьте один образец сусла и замерьте его обоими приборами — оба
+          показания в °Bx (шкала ваших ареометров). Персональный WCF
+          вычислится из пары и будет применяться к замерам этого рефрактометра
+          вместо усреднённого.
         </p>
         <label>
           Показание рефрактометра, °Bx
           <input value={refrBrix} onChange={(e) => setRefrBrix(e.target.value)} type="number" step="0.1" />
         </label>
         <label>
-          Показание ареометра, SG
-          <input value={hydrometerBx} onChange={(e) => setHydrometerSg(e.target.value)} type="number" step="0.0001" />
+          Показание ареометра, °Bx
+          <input value={hydrometerBx} onChange={(e) => setHydrometerBx(e.target.value)} type="number" step="0.1" />
         </label>
         {error ? <p className="error-text">{error}</p> : null}
         <div className="form-actions">
