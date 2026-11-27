@@ -1,9 +1,10 @@
 {
   "name": "winemaker",
   "productName": "Winemaker",
-  "version": "0.1.0",
-  "description": "Помощник винодела — локальное десктоп-приложение",
+  "version": "0.2.0",
+  "description": "Desktop assistant for winemakers: local-first batch journal, refractometer and hydrometer correction, fermentation analytics",
   "author": "Petr Bondarenko <mdma.zone@gmail.com>",
+  "license": "MIT",
   "private": true,
   "main": "out/main/index.js",
   "scripts": {
@@ -21,8 +22,10 @@
   "dependencies": {
     "better-sqlite3": "^13.2.0",
     "drizzle-orm": "^0.45.4",
+    "i18next": "^27.2.9",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
+    "react-i18next": "^18.0.3",
     "zod": "^4.6.7",
     "zustand": "^5.1.0"
   },

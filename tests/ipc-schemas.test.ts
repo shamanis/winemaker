@@ -4,6 +4,7 @@ import {
   channels,
   gravityRawSchema,
   instrumentInputSchema,
+  ipcEnvelopeSchema,
   settingsSchema,
   strainInputSchema
 } from '../src/shared/ipc/contracts'
@@ -68,5 +69,29 @@ describe('zod-схемы доменов (add-catalogs-and-batches)', () => {
     expect(settingsSchema.safeParse({ densityUnit: 'sg', correctionFormula: 'auto' }).success).toBe(true)
     expect(settingsSchema.safeParse({ densityUnit: 'plato', correctionFormula: 'terrill' }).success).toBe(false)
     expect(settingsSchema.safeParse({ densityUnit: 'brix', correctionFormula: 'magic' }).success).toBe(false)
+  })
+
+  it('настройки: language по умолчанию system; system/ru/en валидны, de — нет', () => {
+    const parsed = settingsSchema.parse({ densityUnit: 'sg', correctionFormula: 'auto' })
+    expect(parsed.language).toBe('system')
+    expect(settingsSchema.safeParse({ densityUnit: 'sg', correctionFormula: 'auto', language: 'ru' }).success).toBe(true)
+    expect(settingsSchema.safeParse({ densityUnit: 'sg', correctionFormula: 'auto', language: 'en' }).success).toBe(true)
+    expect(settingsSchema.safeParse({ densityUnit: 'sg', correctionFormula: 'auto', language: 'system' }).success).toBe(true)
+    expect(settingsSchema.safeParse({ densityUnit: 'sg', correctionFormula: 'auto', language: 'de' }).success).toBe(false)
+  })
+
+  it('конверт ошибки: код + ключ каталога + параметры + issues (design D8)', () => {
+    const ok = ipcEnvelopeSchema.safeParse({
+      ok: false,
+      error: {
+        code: 'DOMAIN',
+        message: 'raw fallback',
+        key: 'errors.batchArchived',
+        params: {},
+        issues: [{ path: 'title', key: 'errors.generic' }]
+      }
+    })
+    expect(ok.success).toBe(true)
+    expect(ipcEnvelopeSchema.safeParse({ ok: false, error: { code: 'X' } }).success).toBe(false)
   })
 })

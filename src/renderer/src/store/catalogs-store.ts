@@ -81,9 +81,3 @@ export const useCatalogsStore = create<CatalogsStoreState>((set, get) => ({
   }
 }))
 
-export const INSTRUMENT_TYPE_LABELS: Record<InstrumentType, string> = {
-  'refractometer-atc': 'Рефрактометр с ATC',
-  refractometer: 'Рефрактометр без ATC',
-  hydrometer: 'Ареометр',
-  other: 'Иной прибор'
-}

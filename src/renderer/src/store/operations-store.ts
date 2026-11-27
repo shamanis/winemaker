@@ -51,13 +51,3 @@ export const useOperationsStore = create<OperationsStoreState>((set, get) => ({
   }
 }))
 
-export const OPERATION_KIND_LABELS: Record<OperationKind, string> = {
-  rack: 'Снятие с осадка',
-  transfer: 'Переливка',
-  sugar: 'Внесение сахара',
-  acid: 'Корректировка кислотности',
-  nutrient: 'Подкормка дрожжей',
-  fining: 'Оклейка',
-  bottling: 'Розлив',
-  other: 'Другая операция'
-}

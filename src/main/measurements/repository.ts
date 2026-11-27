@@ -12,6 +12,8 @@ import type { AppDatabase } from '../db/database'
 import { nowUtcIso } from '../../shared/time/utc'
 import type { MarkDirty } from '../catalogs/repositories'
 import { resolveMeasurement, type PipelineContext, type ResolvedMeasurement } from '../../shared/calculations/pipeline'
+import type { CorrectionsDto } from '../../shared/ipc/contracts'
+import type { TranslateFn } from '../../shared/i18n/create-i18n'
 
 export interface MeasurementCreateInput {
   batchId: string
@@ -30,11 +32,8 @@ export type ResolveContextProvider = (
   instrumentId: string | null
 ) => PipelineContext
 
-export interface StoredCorrections {
-  steps: ResolvedMeasurement['corrections']
-  warnings: ResolvedMeasurement['warnings']
-  infos: ResolvedMeasurement['infos']
-}
+/** t() с текущим языком main — читается в момент записи замера (design D6). */
+export type TraceTextProvider = () => TranslateFn
 
 /**
  * Репозиторий замеров (design D1/D3): коррекция выполняется при каждом
@@ -44,7 +43,8 @@ export class MeasurementRepository {
   constructor(
     private readonly db: AppDatabase,
     private readonly markDirty: MarkDirty,
-    private readonly resolveCtx: ResolveContextProvider
+    private readonly resolveCtx: ResolveContextProvider,
+    private readonly traceT: TraceTextProvider
   ) {}
 
   private resolveFor(input: {
@@ -82,7 +82,7 @@ export class MeasurementRepository {
       tempC: input.tempC ?? null,
       correctedSg: resolved.correctedSg,
       correctedBrix: resolved.correctedBrix,
-      corrections: { steps: resolved.corrections, warnings: resolved.warnings, infos: resolved.infos },
+      corrections: this.toStoredCorrections(resolved),
       measuredAtUtc: input.measuredAtUtc,
       notes: input.notes ?? null,
       createdAtUtc: now,
@@ -91,6 +91,33 @@ export class MeasurementRepository {
     this.db.insert(measurements).values(row).run()
     this.markDirty()
     return row as MeasurementRow
+  }
+
+  /**
+   * След к форме хранения (design D6): готовый текст на языке, действовавшем
+   * при сохранении (читается без приложения — data-portability), рядом —
+   * машинные коды для показа на текущем языке интерфейса.
+   */
+  private toStoredCorrections(resolved: {
+    corrections: Array<{ type: string; input: number; output: number; code?: string; params?: Record<string, string | number> }>
+    warnings: Array<{ code: string; params?: Record<string, string | number> }>
+    infos: Array<{ code: string; params?: Record<string, string | number> }>
+  }): CorrectionsDto {
+    const t = this.traceT()
+    return {
+      steps: resolved.corrections.map((step) => ({
+        type: step.type,
+        input: step.input,
+        output: step.output,
+        note: step.code ? t(step.code, { ...step.params }) : undefined,
+        code: step.code,
+        params: step.params
+      })),
+      warnings: resolved.warnings.map((w) => t(w.code, { ...w.params })),
+      infos: resolved.infos.map((i) => t(i.code, { ...i.params })),
+      warningCodes: resolved.warnings,
+      infoCodes: resolved.infos
+    }
   }
 
   listByBatch(batchId: string): MeasurementRow[] {

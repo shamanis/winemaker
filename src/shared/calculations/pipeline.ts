@@ -14,11 +14,23 @@ import { HYDROMETER_TEMP_K } from './correction'
 /**
  * Пайплайн коррекции замера плотности (design D3): сырое показание →
  * прибор → формулы → канонический SG + полный след пересчёта (спека 2.7).
+ * Пайплайн независим от языка (design D6): след несёт машинные коды
+ * сообщений и параметры; текст подставляет каталог переводов — при
+ * предпросмотре в renderer и при сохранении в main.
  */
 
 export type MeasurementKind = 'density' | 'temperature' | 'ph'
 export type DensityUnit = 'sg' | 'brix'
 export type CorrectionFormula = 'auto' | 'terrill' | 'linear'
+
+/** Параметры сообщения следа: числа и готовые строки (например, со знаком). */
+export type TraceParams = Readonly<Record<string, string | number>>
+
+/** Сообщение следа: код в каталоге (trace.*) + параметры. */
+export interface TraceMessage {
+  readonly code: string
+  readonly params?: TraceParams
+}
 
 export interface PipelineInstrument {
   readonly type: string
@@ -58,7 +70,9 @@ export interface CorrectionStep {
   readonly type: string
   readonly input: number
   readonly output: number
-  readonly note?: string
+  /** Код сообщения следа в каталоге (trace.*); шаг без сообщения — без кода. */
+  readonly code?: string
+  readonly params?: TraceParams
 }
 
 export interface ResolvedMeasurement {
@@ -66,19 +80,39 @@ export interface ResolvedMeasurement {
   readonly correctedSg: number | null
   readonly correctedBrix: number | null
   readonly corrections: CorrectionStep[]
-  /** Ошибки/предупреждения — красным в UI. */
-  readonly warnings: string[]
+  /** Предупреждения — красным в UI. */
+  readonly warnings: TraceMessage[]
   /** Информационные сообщения — нейтральным стилем (не ошибка). */
-  readonly infos: string[]
+  readonly infos: TraceMessage[]
 }
+
+/** Все коды сообщений следа, которые может выдать пайплайн (проверка каталога). */
+export const TRACE_CODES = [
+  'trace.sgToBrix',
+  'trace.calibrationOffset',
+  'trace.hydrometerTemp',
+  'trace.tempOutOfApprox',
+  'trace.wcfFromPair',
+  'trace.wcfManual',
+  'trace.wcfNone',
+  'trace.noPersonalWcf',
+  'trace.brixToSg',
+  'trace.earlyStageAuto',
+  'trace.earlyStageFallback',
+  'trace.nonPhysicalFallback',
+  'trace.novotnyModel',
+  'trace.novotnyModelShort',
+  'trace.linearCorrection',
+  'trace.terrillCorrection',
+  'trace.nonPhysicalResult'
+] as const
 
 const isHydrometer = (type: string): boolean => type === 'hydrometer'
 const isRefractometer = (type: string): boolean =>
   type === 'refractometer-atc' || type === 'refractometer'
 
-/** Нет ни калибровочной пары, ни ручного WCF — показания идут без поправки. */
-const NO_PERSONAL_WCF_WARNING =
-  'У рефрактометра нет персонального WCF (ни калибровочной пары, ни заданного вручную) — показание используется без поправки (коэффициент 1.0)'
+/** Предупреждение: ни калибровочной пары, ни ручного WCF — показания без поправки. */
+const NO_PERSONAL_WCF: TraceMessage = { code: 'trace.noPersonalWcf' }
 
 /**
  * Вычисляет скорректированный SG замера. Для temperature/ph значение
@@ -94,7 +128,7 @@ export function resolveMeasurement(
   }
 
   const corrections: CorrectionStep[] = []
-  const warnings: string[] = []
+  const warnings: TraceMessage[] = []
   const instrument = ctx.instrument
   if (!instrument) {
     throw new TypeError('Density measurement requires an instrument')
@@ -108,7 +142,7 @@ export function resolveMeasurement(
         type: 'sg-to-brix',
         input: input.rawValue,
         output: b,
-        note: 'Показание в SG приведено к шкале Brix (прибор пользователя — Brix)'
+        code: 'trace.sgToBrix'
       })
     }
 
@@ -118,7 +152,8 @@ export function resolveMeasurement(
         type: 'calibration-offset',
         input: b,
         output: b + off,
-        note: `Калибровочное смещение прибора ${off > 0 ? '+' : ''}${off} °Bx`
+        code: 'trace.calibrationOffset',
+        params: { offset: off > 0 ? `+${off}` : `${off}` }
       })
       b += off
     }
@@ -132,12 +167,11 @@ export function resolveMeasurement(
         type: 'hydrometer-temp',
         input: sg0,
         output: sg,
-        note: `Температурная коррекция к T_кал ${calibrationTempC} °C (сусло ${input.tempC} °C)`
+        code: 'trace.hydrometerTemp',
+        params: { tCal: calibrationTempC, tMust: input.tempC }
       })
       if (isTempOutOfApproximation(input.tempC)) {
-        warnings.push(
-          `Температура сусла ${input.tempC} °C вне зоны аппроксимации (10–35 °C) — поправка приблизительная, см. таблицу паспорта прибора`
-        )
+        warnings.push({ code: 'trace.tempOutOfApprox', params: { tMust: input.tempC } })
       }
     }
 
@@ -153,7 +187,7 @@ export function resolveMeasurement(
       // Без персонального коэффициента (ни пары, ни ручного WCF) показание
       // идёт в расчёт без поправки — предупреждаем.
       if (instrument.wcf == null) {
-        warnings.push(NO_PERSONAL_WCF_WARNING)
+        warnings.push(NO_PERSONAL_WCF)
       }
       // Формула Террилла регрессирована на СЫРЫХ показаниях (без WCF):
       // алкогольное искажение уже учтено в регрессии (design: correction inputs).
@@ -183,19 +217,18 @@ export function resolveMeasurement(
           ctx.startCorrectedBrix ?? invertBrixToSg(ctx.startOgSg as number)
         const n = novotny(r, b0)
         if (instrument.wcf == null) {
-          warnings.push(NO_PERSONAL_WCF_WARNING)
+          warnings.push(NO_PERSONAL_WCF)
         }
-        const infos: string[] = []
+        const infos: TraceMessage[] = []
         if (biRaw != null && bfRaw > 0.6 * biRaw) {
-          infos.push(
-            'Показание близко к стартовому — спиртовая коррекция ещё не требуется, применена двухкомпонентная модель Новотного'
-          )
+          infos.push({ code: 'trace.earlyStageAuto' })
         }
         corrections.push({
           type: 'novotny-model',
           input: bfRaw,
           output: n.apparentSg,
-          note: `Двухкомпонентная модель (Novotný): R=${r.toFixed(2)} °Bx (с WCF), B₀=${b0.toFixed(2)} °Bx → истинный экстракт B=${n.trueExtractBx.toFixed(2)} °Bx, крепость ${n.abvPct.toFixed(1)} % об., итераций ${n.iterations}`
+          code: 'trace.novotnyModel',
+          params: { r, b0, b: n.trueExtractBx, abv: n.abvPct, iterations: n.iterations }
         })
         return {
           correctedSg: n.apparentSg,
@@ -208,12 +241,10 @@ export function resolveMeasurement(
       // Ранняя стадия (docs: R > 0.6·Bi): эмпирические формулы вне зоны
       // применимости — работает двухкомпонентная модель Новотного.
       // Это информация для пользователя, не ошибка.
-      const infos: string[] = []
+      const infos: TraceMessage[] = []
       const earlyStage = biRaw != null && bfRaw > 0.6 * biRaw
       if (earlyStage) {
-        infos.push(
-          'Показание близко к стартовому — для коррекции использована двухкомпонентная модель Новотного'
-        )
+        infos.push({ code: 'trace.earlyStageFallback' })
         const r = bfRaw * (instrument.wcf ?? 1)
         const b0 =
           ctx.startCorrectedBrix ?? invertBrixToSg(ctx.startOgSg as number)
@@ -222,7 +253,8 @@ export function resolveMeasurement(
           type: 'novotny-model',
           input: bfRaw,
           output: n.apparentSg,
-          note: `Двухкомпонентная модель (Novotný): R=${r.toFixed(2)} °Bx (с WCF), B₀=${b0.toFixed(2)} °Bx → истинный экстракт B=${n.trueExtractBx.toFixed(2)} °Bx, крепость ${n.abvPct.toFixed(1)} % об.`
+          code: 'trace.novotnyModelShort',
+          params: { r, b0, b: n.trueExtractBx, abv: n.abvPct }
         })
         return {
           correctedSg: n.apparentSg,
@@ -244,7 +276,8 @@ export function resolveMeasurement(
           type: 'fermentation-correction',
           input: bfRaw,
           output: sg,
-          note: `Линейная (Баллинг RE): OE=${oe.toFixed(2)} °P, AE=${ae.toFixed(2)} °P (Bi=${biRaw.toFixed(2)}, Bf=${bfRaw.toFixed(2)} °Bx сырые)`
+          code: 'trace.linearCorrection',
+          params: { oe, ae, bi: biRaw, bf: bfRaw }
         })
       } else {
         sg = terrillCorrection(biRaw, bfRaw)
@@ -252,7 +285,8 @@ export function resolveMeasurement(
           type: 'fermentation-correction',
           input: bfRaw,
           output: sg,
-          note: `Формула Террилла: Bi=${biRaw.toFixed(2)}, Bf=${bfRaw.toFixed(2)} °Bx (сырые показания, без WCF)`
+          code: 'trace.terrillCorrection',
+          params: { bi: biRaw, bf: bfRaw }
         })
       }
 
@@ -263,14 +297,12 @@ export function resolveMeasurement(
         const b0 =
           ctx.startCorrectedBrix ?? invertBrixToSg(ctx.startOgSg as number)
         const n = novotny(r, b0)
-        infos.push(
-          'Показание близко к стартовому — применена двухкомпонентная модель Новотного'
-        )
+        infos.push({ code: 'trace.nonPhysicalFallback' })
         corrections.push({
           type: 'novotny-model',
           input: bfRaw,
           output: n.apparentSg,
-          note: 'Результат эмпирической формулы нефизичен — применена двухкомпонентная модель Новотного'
+          code: 'trace.nonPhysicalResult'
         })
         sg = n.apparentSg
       }
@@ -284,14 +316,15 @@ export function resolveMeasurement(
       type: 'wcf',
       input: input.rawValue,
       output: correctedBrix,
-      note: instrument.hasCalibrationPair
-        ? `Персональный WCF из калибровочной пары: ${wcf}`
+      code: instrument.hasCalibrationPair
+        ? 'trace.wcfFromPair'
         : instrument.wcf != null
-          ? `WCF прибора (задан вручную): ${wcf}`
-          : 'WCF не задан — показание без поправки (коэффициент 1.0)'
+          ? 'trace.wcfManual'
+          : 'trace.wcfNone',
+      params: { wcf }
     })
     if (instrument.wcf == null) {
-      warnings.push(NO_PERSONAL_WCF_WARNING)
+      warnings.push(NO_PERSONAL_WCF)
     }
 
     const sg = brixToSg(correctedBrix)
@@ -299,7 +332,7 @@ export function resolveMeasurement(
       type: 'brix-to-sg',
       input: correctedBrix,
       output: sg,
-      note: 'До начала брожения — перевод Brix → SG'
+      code: 'trace.brixToSg'
     })
     return { correctedSg: sg, correctedBrix, corrections, warnings, infos: [] }
   }
@@ -308,9 +341,9 @@ export function resolveMeasurement(
   if (input.unit === 'brix') {
     const sg = brixToSg(input.rawValue)
     corrections.push({ type: 'brix-to-sg', input: input.rawValue, output: sg })
-    return { correctedSg: sg, correctedBrix: null, corrections, warnings, infos: [] }
+    return { correctedSg: sg, correctedBrix: null, corrections, warnings: [], infos: [] }
   }
-  return { correctedSg: input.rawValue, correctedBrix: null, corrections, warnings, infos: [] }
+  return { correctedSg: input.rawValue, correctedBrix: null, corrections, warnings: [], infos: [] }
 }
 
 export { computePersonalWcf }

@@ -1,7 +1,9 @@
 import { useEffect, useRef, type ReactElement } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useAppStore } from './store/app-store'
 import { useUiStore, TAB_ORDER, type ScreenTab } from './store/ui-store'
 import { useSettingsStore } from './store/settings-store'
+import { setRendererLanguage } from './i18n'
 import { useCatalogsStore } from './store/catalogs-store'
 import { BatchesScreen } from './screens/BatchesScreen'
 import { CatalogsScreen } from './screens/CatalogsScreen'
@@ -10,14 +12,8 @@ import { GlossaryScreen } from './screens/GlossaryScreen'
 import { HOTKEYS } from './keyboard/hotkeys'
 import { useHotkeys } from './keyboard/use-hotkeys'
 
-const TAB_LABELS: Record<ScreenTab, string> = {
-  batches: 'Партии',
-  catalogs: 'Справочники',
-  settings: 'Настройки',
-  help: 'Справка'
-}
-
 export function App(): ReactElement {
+  const { t } = useTranslation()
   const bootstrap = useAppStore((s) => s.bootstrap)
   const toggleTheme = useAppStore((s) => s.toggleTheme)
   const theme = useAppStore((s) => s.theme)
@@ -27,6 +23,12 @@ export function App(): ReactElement {
   const activeTab = useUiStore((s) => s.activeTab)
   const setTab = useUiStore((s) => s.setTab)
   const initUi = useUiStore((s) => s.init)
+  // Язык интерфейса: любое изменение настройки синхронизирует экземпляр
+  // i18next и объявление языка страницы (спека localization: мгновенное переключение).
+  const resolvedLanguage = useSettingsStore((s) => s.resolvedLanguage)
+  useEffect(() => {
+    if (resolvedLanguage) setRendererLanguage(resolvedLanguage)
+  }, [resolvedLanguage])
   const tabsRef = useRef<Array<HTMLButtonElement | null>>([])
 
   useEffect(() => {
@@ -66,8 +68,8 @@ export function App(): ReactElement {
   return (
     <div className="app">
       <header className="app-header">
-        <h1>Winemaker</h1>
-        <nav className="tabs" role="tablist" aria-label="Разделы" onKeyDown={onTabKeyDown}>
+        <h1>{t('app.name')}</h1>
+        <nav className="tabs" role="tablist" aria-label={t('header.ariaNav')} onKeyDown={onTabKeyDown}>
           {TAB_ORDER.map((tab, idx) => (
             <button
               key={tab}
@@ -79,18 +81,18 @@ export function App(): ReactElement {
               aria-selected={activeTab === tab}
               tabIndex={activeTab === tab ? 0 : -1}
               className={activeTab === tab ? 'tab active' : 'tab'}
-              title={`${HOTKEYS[tab]} — ${TAB_LABELS[tab]}`}
+              title={`${HOTKEYS[tab]} — ${t(`tabs.${tab}`)}`}
               onClick={() => setTab(tab)}
             >
-              {TAB_LABELS[tab]}
+              {t(`tabs.${tab}`)}
             </button>
           ))}
         </nav>
         <button
           type="button"
           className="theme-toggle"
-          aria-label={theme === 'dark' ? 'Переключить на светлую тему' : 'Переключить на тёмную тему'}
-          title={`${HOTKEYS.toggleTheme} — переключить тему`}
+          aria-label={theme === 'dark' ? t('header.themeToLight') : t('header.themeToDark')}
+          title={`${HOTKEYS.toggleTheme} — ${t('header.themeHotkey')}`}
           onClick={toggleTheme}
         >
           {theme === 'dark' ? (
@@ -130,10 +132,10 @@ export function App(): ReactElement {
       <footer className="app-footer">
         <span>
           {utilityOk === null
-            ? 'Проверка служб…'
+            ? t('footer.servicesChecking')
             : utilityOk
-              ? 'Службы: ок'
-              : 'Службы: ошибка'}
+              ? t('footer.servicesOk')
+              : t('footer.servicesError')}
         </span>
         {appVersion ? <span>v{appVersion}</span> : null}
       </footer>

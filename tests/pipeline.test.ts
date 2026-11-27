@@ -63,7 +63,8 @@ describe('resolveMeasurement — пайплайн коррекции', () => {
       { ...BASE_CTX, instrument: { type: 'hydrometer', wcf: null, calibrationOffsetBx: null } }
     )
     expect(r.warnings).toHaveLength(1)
-    expect(r.warnings[0]).toContain('вне зоны аппроксимации')
+    expect(r.warnings[0]?.code).toBe('trace.tempOutOfApprox')
+    expect(r.warnings[0]?.params).toEqual({ tMust: 38 })
   })
 
   it('ручной Террилл в домене (Bf ≤ 0.6·Bi): сырые показания, ручной WCF — без предупреждений', () => {
@@ -108,7 +109,7 @@ describe('resolveMeasurement — пайплайн коррекции', () => {
     const types = r.corrections.map((c) => c.type)
     expect(types).toEqual(['novotny-model'])
     expect(r.correctedSg).toBeLessThanOrEqual(BASE_CTX.startOgSg)
-    expect(r.infos.some((i) => i.includes('близко к стартовому'))).toBe(true)
+    expect(r.infos.some((i) => i.code === 'trace.earlyStageFallback')).toBe(true)
     // ручной WCF 1.04 задан — предупреждения о калибровке нет
     expect(r.warnings).toHaveLength(0)
   })
@@ -123,8 +124,7 @@ describe('resolveMeasurement — пайплайн коррекции', () => {
       }
     )
     expect(r.warnings).toHaveLength(1)
-    expect(r.warnings[0]).toContain('нет персонального WCF')
-    expect(r.warnings[0]).toContain('без поправки')
+    expect(r.warnings[0]?.code).toBe('trace.noPersonalWcf')
   })
 
   it('линейная формула: OE из истинного OG, AE из сырого показания (в домене — 12 ≤ 13.2)', () => {
@@ -158,7 +158,7 @@ describe('resolveMeasurement — пайплайн коррекции', () => {
     )
     expect(auto.corrections.map((c) => c.type)).toEqual(['novotny-model'])
     expect(auto.correctedSg).toBeLessThanOrEqual(BASE_CTX.startOgSg)
-    expect(auto.infos.some((i) => i.includes('близко к стартовому'))).toBe(true)
+    expect(auto.infos.some((i) => i.code === 'trace.earlyStageAuto')).toBe(true)
     expect(auto.warnings).toHaveLength(0)
 
     // Ручной Террилл: Bf=18 > 0.6×22=13.2 — вне домена → Novotný + info
@@ -167,7 +167,7 @@ describe('resolveMeasurement — пайплайн коррекции', () => {
       { ...BASE_CTX, instrument, correctionFormula: 'terrill' }
     )
     expect(manual.corrections.map((c) => c.type)).toEqual(['novotny-model'])
-    expect(manual.infos.some((i) => i.includes('близко к стартовому'))).toBe(true)
+    expect(manual.infos.some((i) => i.code === 'trace.earlyStageFallback')).toBe(true)
     expect(manual.warnings).toHaveLength(0)
   })
 
@@ -182,8 +182,9 @@ describe('resolveMeasurement — пайплайн коррекции', () => {
       expect(r.correctedSg).toBeLessThanOrEqual(brixToSg(22.88)) // ≤ истинного OG
       expect(r.correctedSg).toBeGreaterThan(0.99)
       expect(r.correctedBrix).toBeGreaterThan(0)
-      expect(r.corrections[0]?.note).toContain('Novotný')
-      expect(r.corrections[0]?.note).toContain('% об.')
+      expect(r.corrections[0]?.code).toBe('trace.novotnyModel')
+      expect(r.corrections[0]?.params?.abv).toBeTypeOf('number')
+      expect(r.corrections[0]?.params?.iterations).toBeTypeOf('number')
     }
   })
 
@@ -206,7 +207,7 @@ describe('resolveMeasurement — пайплайн коррекции', () => {
       { ...BASE_CTX, instrument, correctionFormula: 'linear' }
     )
     expect(r.corrections.map((c) => c.type)).toEqual(['fermentation-correction'])
-    expect(r.corrections[0]?.note).toContain('Баллинг RE')
+    expect(r.corrections[0]?.code).toBe('trace.linearCorrection')
   })
 
   it('замер до/в момент постановки — без ферментной коррекции', () => {
@@ -228,8 +229,8 @@ describe('resolveMeasurement — пайплайн коррекции', () => {
         instrument: { type: 'refractometer-atc', wcf: 1, calibrationOffsetBx: null, hasCalibrationPair: true }
       }
     )
-    const note = r.corrections.find((c) => c.type === 'fermentation-correction')?.note ?? ''
-    expect(note).toContain('Bi=')
+    const code = r.corrections.find((c) => c.type === 'fermentation-correction')?.code
+    expect(code).toBe('trace.terrillCorrection')
     // Террилл(Bi=21.97 инверсией, Bf=10) — разумный FG
     expect(r.correctedSg).toBeGreaterThan(1.0)
     expect(r.correctedSg).toBeLessThan(1.03)

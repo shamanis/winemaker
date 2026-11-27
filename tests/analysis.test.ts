@@ -5,11 +5,15 @@ import {
   formatAbv,
   formatDensity,
   hallAbv,
+  MIN_POINTS,
   residualSugar
 } from '../src/shared/calculations/analysis'
 import { brixToSg } from '../src/shared/calculations/density'
 import { invertBrixToSg } from '../src/shared/calculations/correction'
+import { createI18n, type TranslateFn } from '../src/shared/i18n/create-i18n'
 
+const ruT: TranslateFn = createI18n('ru').t
+const enT: TranslateFn = createI18n('en').t
 describe('hallAbv (формула Hall из vision)', () => {
   it('контрольный пример OG=1.092, FG=0.998', () => {
     const expected =
@@ -67,6 +71,7 @@ describe('forecastCompletion (прогноз-диапазон, спека 6.3.6)
       { atUtc: day(4), sg: 1.07 }
     ])
     expect(f.kind).toBe('insufficient-data')
+    expect(f.kind !== 'range' && f.reason).toBe('minPoints')
   })
 
   it('окно меньше 48 часов — недостаточно данных', () => {
@@ -76,6 +81,7 @@ describe('forecastCompletion (прогноз-диапазон, спека 6.3.6)
       { atUtc: '2026-11-26T06:00:00.000Z', sg: 1.07 }
     ])
     expect(f.kind).toBe('insufficient-data')
+    expect(f.kind !== 'range' && f.reason).toBe('minSpan')
   })
 
   it('плоская динамика — прогноз не строится', () => {
@@ -86,13 +92,25 @@ describe('forecastCompletion (прогноз-диапазон, спека 6.3.6)
       { atUtc: day(6), sg: 1.05 }
     ])
     expect(f.kind).toBe('not-declining')
+    expect(f.kind !== 'range' && f.reason).toBe('notDeclining')
   })
 })
 
-describe('форматтеры (6.3.1, 6.3.2)', () => {
-  it('крепость всегда с «% об.»', () => {
-    expect(formatAbv(12.34)).toContain('% об.')
-    expect(formatAbv(null)).toBe('—')
+describe('форматтеры (6.3.1, 6.3.2; единицы — локализация)', () => {
+  it('крепость: «% об.» на русском, «% ABV» на английском', () => {
+    expect(formatAbv(12.34, ruT)).toContain('% об.')
+    expect(formatAbv(12.34, enT)).toContain('% ABV')
+    expect(formatAbv(12.34, ruT)).toContain('12.3')
+    expect(formatAbv(null, ruT)).toBe('—')
+  })
+
+  it('сообщение о минимуме замеров склоняется по числу', () => {
+    expect(ruT('forecast.minPoints', { count: MIN_POINTS })).toBe(
+      `Нужно хотя бы ${MIN_POINTS} замера плотности`
+    )
+    expect(enT('forecast.minPoints', { count: MIN_POINTS })).toBe(
+      `At least ${MIN_POINTS} density measurements are required`
+    )
   })
 
   it('плотность показывает ОБЕ единицы при любом значении настроек', () => {

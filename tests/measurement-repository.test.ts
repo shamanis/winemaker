@@ -6,6 +6,9 @@ import { InstrumentRepository, YeastStrainRepository } from '../src/main/catalog
 import { BatchRepository } from '../src/main/batches/repository'
 import { MeasurementRepository, type ResolveContextProvider } from '../src/main/measurements/repository'
 import type { PipelineContext } from '../src/shared/calculations/pipeline'
+import { createI18n, type TranslateFn } from '../src/shared/i18n/create-i18n'
+
+const ruT: TranslateFn = createI18n('ru').t
 
 const MIGRATIONS_FOLDER = resolve(__dirname, '..', 'drizzle')
 const handles: DatabaseHandle[] = []
@@ -52,7 +55,7 @@ function setup(handle: DatabaseHandle) {
     return ctx
   }
 
-  const measurements = new MeasurementRepository(handle.db, () => undefined, resolveCtx)
+  const measurements = new MeasurementRepository(handle.db, () => undefined, resolveCtx, () => ruT)
   return { instruments, strains, batches, measurements, setFormula: (f: 'terrill' | 'linear') => { formula = f } }
 }
 
@@ -95,6 +98,55 @@ describe('MeasurementRepository', () => {
     expect(stored.steps.length).toBeGreaterThanOrEqual(1)
     // у REFRACTOMETER задан WCF вручную — персональный коэффициент есть, предупреждения нет
     expect(stored.warnings).toHaveLength(0)
+  })
+
+  it('след сохраняется с текстом на языке main и машинными кодами (design D6)', () => {
+    const handle = openMemory()
+    const { batches, instruments, measurements } = setup(handle)
+    const batch = batches.create(BATCH_INPUT)
+    const refr = instruments.create(REFRACTOMETER)
+    const refrNoWcf = instruments.create({
+      name: 'Р-2',
+      type: 'refractometer',
+      wcf: null,
+      calibrationOffsetBx: null
+    })
+
+    // До начала брожения: шаги [wcf, brix-to-sg] с известными кодами
+    const m = measurements.create({
+      batchId: batch.batch.id,
+      kind: 'density',
+      instrumentId: refr.id,
+      rawValue: 22,
+      unit: 'brix',
+      tempC: null,
+      measuredAtUtc: '2026-11-25T10:00:00.000Z'
+    })
+    const stored = m.corrections as {
+      steps: Array<{ type: string; note?: string; code?: string; params?: Record<string, unknown> }>
+      warnings: string[]
+      warningCodes?: Array<{ code: string; params?: Record<string, unknown> }>
+      infos: string[]
+      infoCodes?: Array<{ code: string }>
+    }
+    const wcfStep = stored.steps.find((s) => s.type === 'wcf')
+    expect(wcfStep?.code).toBe('trace.wcfManual')
+    // готовый текст совпадает с переводом кода на языке, действовавшем при сохранении
+    expect(wcfStep?.note).toBe(ruT('trace.wcfManual', { wcf: 1.04 }))
+
+    // рефрактометр без WCF: предупреждение — текст и код параллельно
+    const m2 = measurements.create({
+      batchId: batch.batch.id,
+      kind: 'density',
+      instrumentId: refrNoWcf.id,
+      rawValue: 22,
+      unit: 'brix',
+      tempC: null,
+      measuredAtUtc: '2026-11-25T10:00:00.000Z'
+    })
+    const stored2 = m2.corrections as typeof stored
+    expect(stored2.warnings[0]).toBe(ruT('trace.noPersonalWcf'))
+    expect(stored2.warningCodes?.[0]).toEqual({ code: 'trace.noPersonalWcf' })
   })
 
   it('delete: снапшот action=delete переживает удаление записи', () => {
@@ -181,6 +233,8 @@ describe('калибровка прибора (2.3)', () => {
       calibrationOffsetBx: null,
       calibrationTempC: 20
     })
-    expect(() => instruments.calibrate(hydrometer.id, 21.5, 1.09)).toThrow('refractometer')
+    expect(() => instruments.calibrate(hydrometer.id, 21.5, 1.09)).toThrow(
+      'errors.calibrationPairRefractometer'
+    )
   })
 })

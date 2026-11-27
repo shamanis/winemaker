@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { LANGUAGE_CODES, LANGUAGE_SETTING_VALUES } from '../i18n/resolve-language'
 
 /**
  * Дескрипторы IPC-каналов: имя + zod-схемы запроса и ответа.
@@ -81,7 +82,9 @@ export const gravityRawSchema = z
       g.unit === 'brix'
         ? g.value >= 0 && g.value <= 80
         : g.value >= 0.9 && g.value <= 1.2,
-    { message: 'Показание вне физического диапазона (Brix 0–80, SG 0.9–1.2)' }
+    // Доменные сообщения — ключи каталога переводов (design D8);
+    // встроенные сообщения zod остаются прозой и ловятся общим текстом.
+    { message: 'errors.gravityRange' }
   )
 export type GravityRaw = z.infer<typeof gravityRawSchema>
 
@@ -230,7 +233,9 @@ export type BatchCreateInput = z.infer<typeof batchCreateSchema>
 
 export const settingsSchema = z.object({
   densityUnit: z.enum(['sg', 'brix']),
-  correctionFormula: z.enum(['auto', 'terrill', 'linear'])
+  correctionFormula: z.enum(['auto', 'terrill', 'linear']),
+  /** 'system' — следовать языку ОС, пока пользователь не выбрал сам (design D4). */
+  language: z.enum(LANGUAGE_SETTING_VALUES).default('system')
 })
 export type AppSettings = z.infer<typeof settingsSchema>
 
@@ -239,21 +244,42 @@ export type AppSettings = z.infer<typeof settingsSchema>
 export const measurementKindSchema = z.enum(['density', 'temperature', 'ph'])
 export type MeasurementKind = z.infer<typeof measurementKindSchema>
 
+/** Параметры сообщения следа. */
+export const traceParamsSchema = z.record(z.string(), z.union([z.string(), z.number()]))
+export type TraceParamsDto = z.infer<typeof traceParamsSchema>
+
+/** Сообщение следа: машинный код + параметры (спека localization, design D6). */
+export const traceMessageSchema = z.object({
+  code: z.string().min(1),
+  params: traceParamsSchema.optional()
+})
+export type TraceMessageDto = z.infer<typeof traceMessageSchema>
+
 export const correctionStepSchema = z.object({
   type: z.string(),
   input: z.number(),
   output: z.number(),
-  note: z.string().optional()
+  /** Готовый текст на языке, действовавшем при сохранении (для экспорта). */
+  note: z.string().optional(),
+  /** Код сообщения следа в каталоге; показ идёт по нему на текущем языке. */
+  code: z.string().min(1).optional(),
+  params: traceParamsSchema.optional()
 })
 export type CorrectionStepDto = z.infer<typeof correctionStepSchema>
 
+/**
+ * След пересчёта: готовые тексты — для чтения без приложения (экспорт),
+ * коды — для показа на языке интерфейса. Записи без кодов валидны
+ * (замеры, сохранённые до появления машинных кодов, design D6).
+ */
 export const correctionsSchema = z.object({
   steps: z.array(correctionStepSchema),
   warnings: z.array(z.string()),
-  infos: z.array(z.string()).optional()
+  infos: z.array(z.string()).optional(),
+  warningCodes: z.array(traceMessageSchema).optional(),
+  infoCodes: z.array(traceMessageSchema).optional()
 })
 export type CorrectionsDto = z.infer<typeof correctionsSchema>
-// infos — информационные сообщения (не ошибки), опциональны для совместимости со старыми записями
 
 export const measurementDtoSchema = z.object({
   id: z.string(),
@@ -291,7 +317,7 @@ export const measurementCreateSchema = measurementBaseSchema.superRefine((input,
         issues.addIssue({
           code: 'custom',
           path: ['instrumentId'],
-          message: 'Для замера плотности укажите прибор'
+          message: 'errors.instrumentRequired'
         })
       }
       const outOfRange =
@@ -302,7 +328,7 @@ export const measurementCreateSchema = measurementBaseSchema.superRefine((input,
         issues.addIssue({
           code: 'custom',
           path: ['rawValue'],
-          message: 'Показание вне физического диапазона (Brix 0–80, SG 0.9–1.2)'
+          message: 'errors.gravityRange'
         })
       }
     }
@@ -310,14 +336,14 @@ export const measurementCreateSchema = measurementBaseSchema.superRefine((input,
       issues.addIssue({
         code: 'custom',
         path: ['rawValue'],
-        message: 'Температура вне допустимого диапазона (−5…60 °C)'
+        message: 'errors.temperatureRange'
       })
     }
     if (input.kind === 'ph' && (input.rawValue < 0 || input.rawValue > 14)) {
       issues.addIssue({
         code: 'custom',
         path: ['rawValue'],
-        message: 'pH вне допустимого диапазона (0–14)'
+        message: 'errors.phRange'
       })
     }
   })
@@ -506,12 +532,16 @@ export const channels = {
   settingsGet: defineChannel({
     name: 'settings:get',
     request: z.object({}),
-    response: z.object({ settings: settingsSchema })
+    response: z.object({
+      settings: settingsSchema,
+      /** Эффективный язык для начальной инициализации интерфейса (design D4). */
+      resolvedLanguage: z.enum(LANGUAGE_CODES)
+    })
   }),
   settingsSet: defineChannel({
     name: 'settings:set',
     request: z.object({ settings: settingsSchema }),
-    response: z.object({ ok: z.boolean() })
+    response: z.object({ ok: z.boolean(), resolvedLanguage: z.enum(LANGUAGE_CODES) })
   }),
 
   measurementsListByBatch: defineChannel({
@@ -556,13 +586,23 @@ export type ChannelResponse<K extends ChannelKey> = z.infer<
 /**
  * Конверт результата invoke: main всегда отвечает этим объектом,
  * preload распаковывает его и превращает ошибку в исключение.
+ * Ошибка несёт машинный код, а для показа пользователю — ключ каталога
+ * с параметрами и по-полевые issues проверки ввода (design D8).
  */
+export const ipcErrorEnvelopeSchema = z.object({
+  code: z.string(),
+  message: z.string(),
+  key: z.string().min(1).optional(),
+  params: traceParamsSchema.optional(),
+  issues: z
+    .array(z.object({ path: z.string(), key: z.string().min(1).optional() }))
+    .optional()
+})
+export type IpcErrorDto = z.infer<typeof ipcErrorEnvelopeSchema>
+
 export const ipcEnvelopeSchema = z.discriminatedUnion('ok', [
   z.object({ ok: z.literal(true), data: z.unknown() }),
-  z.object({
-    ok: z.literal(false),
-    error: z.object({ code: z.string(), message: z.string() })
-  })
+  z.object({ ok: z.literal(false), error: ipcErrorEnvelopeSchema })
 ])
 
-export type IpcEnvelope<T> = { ok: true; data: T } | { ok: false; error: { code: string; message: string } }
+export type IpcEnvelope<T> = { ok: true; data: T } | { ok: false; error: IpcErrorDto }

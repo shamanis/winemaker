@@ -1,8 +1,11 @@
 import { invertBrixToSg } from './correction'
+import type { TranslateFn } from '../i18n/create-i18n'
 
 /**
  * Аналитика брожения (vision «Специфика предметной области», формула Hall).
  * Все расчёты — только по скорректированным значениям в SG (спека 2.10/4.5).
+ * Сообщения нестандартных исходов — машинные reason-коды (design D8);
+ * текст подставляет каталог переводов на стороне показа.
  */
 
 /** ABV по формуле Hall, % об. */
@@ -29,19 +32,22 @@ export function residualSugar(ogSg: number, fgSg: number): number {
 /** Целевая плотность прогноза («сухое») — константа этапа (design D1). */
 export const FORECAST_TARGET_SG = 0.999
 
+/** Минимум точек для прогноза (нужен в каталоге: склонение {{count}}). */
+export const MIN_POINTS = 3
+
+export type ForecastFailureReason = 'minPoints' | 'minSpan' | 'notDeclining'
+
 export type Forecast =
   | { kind: 'range'; fromUtc: string; toUtc: string; targetSg: number }
-  | { kind: 'insufficient-data'; message: string }
-  | { kind: 'not-declining'; message: string }
+  | { kind: 'insufficient-data'; reason: Extract<ForecastFailureReason, 'minPoints' | 'minSpan'> }
+  | { kind: 'not-declining'; reason: Extract<ForecastFailureReason, 'notDeclining'> }
 
 export interface ForecastPoint {
   atUtc: string
   sg: number
 }
 
-const MIN_POINTS = 3
 const MIN_SPAN_MS = 48 * 3600_000
-
 function slopePerDay(points: ForecastPoint[]): number {
   const xs = points.map((p) => Date.parse(p.atUtc) / 86_400_000)
   const ys = points.map((p) => p.sg)
@@ -75,26 +81,17 @@ export function forecastCompletion(
 ): Forecast {
   const sorted = [...points].sort((a, b) => a.atUtc.localeCompare(b.atUtc))
   if (sorted.length < MIN_POINTS) {
-    return {
-      kind: 'insufficient-data',
-      message: `Нужно хотя бы ${MIN_POINTS} замера плотности`
-    }
+    return { kind: 'insufficient-data', reason: 'minPoints' }
   }
   const span = Date.parse(sorted.at(-1)!.atUtc) - Date.parse(sorted[0]!.atUtc)
   if (span < MIN_SPAN_MS) {
-    return {
-      kind: 'insufficient-data',
-      message: 'Замеры должны покрывать не менее 48 часов'
-    }
+    return { kind: 'insufficient-data', reason: 'minSpan' }
   }
 
   const slopeAll = slopePerDay(sorted)
   const slopeRecent = slopePerDay(sorted.slice(-3))
   if (slopeAll >= -1e-6 || slopeRecent >= -1e-6) {
-    return {
-      kind: 'not-declining',
-      message: 'Плотность не снижается — завершение по текущей динамике не прогнозируется'
-    }
+    return { kind: 'not-declining', reason: 'notDeclining' }
   }
 
   const last = sorted.at(-1)!
@@ -104,12 +101,12 @@ export function forecastCompletion(
   return { kind: 'range', fromUtc: from, toUtc: to, targetSg }
 }
 
-/* ── Форматтеры (спеки 6.3.1, 6.3.2) ── */
+/* ── Форматтеры (спеки 6.3.1, 6.3.2; локализация единиц — design D8) ── */
 
-/** Крепость — всегда с «% об.» (6.3.2), без исключений. */
-export function formatAbv(abv: number | null | undefined): string {
+/** Крепость — всегда с единицей (6.3.2), обозначение из каталога: «% об.» / «% ABV». */
+export function formatAbv(abv: number | null | undefined, t: TranslateFn): string {
   if (abv == null || !Number.isFinite(abv)) return '—'
-  return `${abv.toFixed(1)} % об.`
+  return t('format.abv', { value: abv })
 }
 
 /**
