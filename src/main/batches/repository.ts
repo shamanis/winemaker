@@ -1,5 +1,6 @@
 import { desc, eq, inArray, isNull } from 'drizzle-orm'
 import { randomUUID } from 'node:crypto'
+import { AppError } from '../../shared/ipc/errors'
 import {
   batches,
   batchAdditions,
@@ -236,7 +237,7 @@ export class BatchRepository {
     const batch = this.db.select().from(batches).where(eq(batches.id, id)).get()
     if (!batch) return undefined
     if (batch.status === 'archived') {
-      throw new Error('Batch is already archived')
+      throw new AppError('errors.batchArchived')
     }
     const at = nowUtcIso()
     this.db.transaction((tx) => {
@@ -294,7 +295,7 @@ export class BatchRepository {
   private resolveStrain(strainId: string): YeastStrainRow {
     const strain = this.db.select().from(yeastStrains).where(eq(yeastStrains.id, strainId)).get()
     if (!strain) {
-      throw new Error(`Штамм не найден в справочнике: ${strainId}`)
+      throw new AppError('errors.strainNotFound', { strainId })
     }
     return strain
   }

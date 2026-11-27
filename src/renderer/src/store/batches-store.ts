@@ -82,14 +82,6 @@ export const useBatchesStore = create<BatchesStoreState>((set, get) => ({
   }
 }))
 
-/** Подпись статуса партии (спека batch-management, 6.2.2). */
-export const STATUS_LABELS: Record<BatchStatus, string> = {
-  fermenting: 'Брожение',
-  'slow-fermenting': 'Дображивание',
-  aging: 'Выдержка',
-  bottling: 'Розлив',
-  archived: 'Архив'
-}
 
 /** Число полных дней от даты постановки. */
 export function daysFromStart(startDateUtc: string): number {

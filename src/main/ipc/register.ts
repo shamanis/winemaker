@@ -6,6 +6,11 @@ import {
   type ChannelDefinition,
   type IpcEnvelope,
 } from '../../shared/ipc/contracts'
+import { resolveLanguage } from '../../shared/i18n/resolve-language'
+import { app } from 'electron'
+import { issueKey, toErrorEnvelope } from '../../shared/ipc/envelope'
+import { setMainLanguage } from '../main-i18n'
+import { rebuildMenu } from '../menu'
 import type { AppStateRepository } from '../app-state/repository'
 import type { InstrumentRepository, YeastStrainRepository } from '../catalogs/repositories'
 import type { BatchFull, BatchRepository } from '../batches/repository'
@@ -28,7 +33,7 @@ export interface IpcContext {
 }
 
 const SETTINGS_KEY = 'settings'
-const DEFAULT_SETTINGS = { densityUnit: 'sg', correctionFormula: 'auto' } as const
+const DEFAULT_SETTINGS = { densityUnit: 'sg', correctionFormula: 'auto', language: 'system' } as const
 
 /**
  * Регистрирует все IPC-хендлеры с валидацией на границе (design.md D3):
@@ -50,7 +55,11 @@ function handleChannel<Req, Res>(
             code: 'BAD_REQUEST',
             message: request.error.issues
               .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
-              .join('; ')
+              .join('; '),
+            issues: request.error.issues.map((issue) => ({
+              path: issue.path.map(String).join('.'),
+              key: issueKey(issue.message)
+            }))
           }
         }
       }
@@ -65,15 +74,10 @@ function handleChannel<Req, Res>(
         }
         return { ok: true, data: response.data as Res }
       } catch (error) {
-        return toErrorEnvelope(error)
+        return { ok: false, error: toErrorEnvelope(error) }
       }
     }
   )
-}
-
-function toErrorEnvelope(error: unknown): IpcEnvelope<never> {
-  const message = error instanceof Error ? error.message : String(error)
-  return { ok: false, error: { code: 'INTERNAL', message } }
 }
 
 export function registerIpcHandlers(ctx: IpcContext): void {
@@ -257,20 +261,28 @@ export function registerIpcHandlers(ctx: IpcContext): void {
     return { ok: true }
   })
 
-  /* Настройки: один ключ JSON в app_state (design D4) */
-  handleChannel<{}, { settings: typeof DEFAULT_SETTINGS | Record<string, unknown> }>(
+  /* Настройки: один ключ JSON в app_state (design D4); язык вычисляется
+     из настройки + языка системы и отдаётся вместе с настройками. */
+  handleChannel<{}, { settings: typeof DEFAULT_SETTINGS | Record<string, unknown>; resolvedLanguage: 'ru' | 'en' }>(
     channels.settingsGet,
     () => {
       const stored = ctx.appState.get<unknown>(SETTINGS_KEY)
       const settings = settingsSchema.safeParse(stored)
-      return { settings: settings.success ? settings.data : { ...DEFAULT_SETTINGS } }
+      const value = settings.success ? settings.data : { ...DEFAULT_SETTINGS }
+      const lang = (value as { language?: string }).language ?? 'system'
+      return { settings: value, resolvedLanguage: resolveLanguage(lang as never, app.getLocale()) }
     }
   )
-  handleChannel<{ settings: unknown }, { ok: boolean }>(
+  handleChannel<{ settings: unknown }, { ok: boolean; resolvedLanguage: 'ru' | 'en' }>(
     channels.settingsSet,
     ({ settings }) => {
+      const parsed = settingsSchema.safeParse(settings)
+      const language = parsed.success ? parsed.data.language : 'system'
       ctx.appState.set(SETTINGS_KEY, settings)
-      return { ok: true }
+      const resolved = resolveLanguage(language, app.getLocale())
+      setMainLanguage(resolved)
+      rebuildMenu()
+      return { ok: true, resolvedLanguage: resolved }
     }
   )
 }

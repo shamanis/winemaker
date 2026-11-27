@@ -91,7 +91,7 @@ describe('BatchRepository', () => {
         ...BASE_INPUT,
         yeast: [{ strainId: 'no-such-strain', doseAmount: 5, doseUnit: 'g', addedAtUtc: '2026-11-25T10:05:00.000Z' }]
       })
-    ).toThrow(/Штамм не найден/)
+    ).toThrow(/errors\.strainNotFound/)
   })
 
   it('OG вычисляется с WCF прибора при вводе в Brix', () => {
@@ -178,7 +178,7 @@ describe('BatchRepository', () => {
     expect(batch.listArchived()).toHaveLength(1)
 
     expect(() => batch.archive(created.batch.id, { finalGravity: 1 })).toThrow(
-      'already archived'
+      'errors.batchArchived'
     )
   })
 

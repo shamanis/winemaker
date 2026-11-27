@@ -1,8 +1,12 @@
 import { useState, type FormEvent, type ReactElement } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { AdditionInput, AdditionKind, StrainDto, YeastInput } from '@shared/ipc/contracts'
+import { additionKindSchema } from '@shared/ipc/contracts'
+import type { TranslateFn } from '@shared/i18n/create-i18n'
 import { api } from '../api'
 import { useCatalogsStore } from '../store/catalogs-store'
 import { Modal } from './Modal'
+import { describeError } from '../errors'
 
 /**
  * Редакторы состава партии (спека batch-management 1.3–1.4): дрожжи —
@@ -10,27 +14,8 @@ import { Modal } from './Modal'
  * создаётся там же через модалку), и стартовые добавки.
  */
 
-export const ADDITION_KIND_LABELS: Record<AdditionKind, string> = {
-  nutrient: 'Питательные соли',
-  enzyme: 'Фермент',
-  so2: 'Диоксид серы',
-  sugar: 'Сахар',
-  acid: 'Корректировка кислотности',
-  other: 'Другое'
-}
-
-const DOSE_UNITS: Array<{ value: 'g' | 'ml' | 'packet' | 'tablet'; label: string }> = [
-  { value: 'g', label: 'г' },
-  { value: 'ml', label: 'мл' },
-  { value: 'packet', label: 'пакет' },
-  { value: 'tablet', label: 'таблетка' }
-]
-type DoseUnit = (typeof DOSE_UNITS)[number]['value']
-
-/** Подпись единицы дозировки для отображения (machine → человек). */
-export function doseUnitLabel(u: string): string {
-  return DOSE_UNITS.find((d) => d.value === u)?.label ?? u
-}
+const DOSE_UNITS = ['g', 'ml', 'packet', 'tablet'] as const
+type DoseUnit = (typeof DOSE_UNITS)[number]
 
 export interface YeastRow {
   strainId: string
@@ -129,7 +114,7 @@ export function yeastFromDto(
   return items.map((y) => ({
     strainId: y.strainId ?? '',
     doseAmount: y.doseAmount != null ? String(y.doseAmount) : '',
-    doseUnit: (DOSE_UNITS.some(d => d.value === y.doseUnit) ? y.doseUnit : 'g') as DoseUnit,
+    doseUnit: (DOSE_UNITS.some(d => d === y.doseUnit) ? y.doseUnit : 'g') as DoseUnit,
     addedAt: y.addedAtUtc.slice(0, 10),
     productionDate: y.productionDateUtc?.slice(0, 10) ?? ''
   }))
@@ -147,9 +132,9 @@ export function additionsFromDto(
 ): AdditionRow[] {
   return items.map((a) => ({
     name: a.name,
-    kind: (a.kind in ADDITION_KIND_LABELS ? a.kind : 'other') as AdditionKind,
+    kind: (additionKindSchema.options.includes(a.kind as AdditionKind) ? a.kind : 'other') as AdditionKind,
     doseAmount: a.doseAmount != null ? String(a.doseAmount) : '',
-    doseUnit: (DOSE_UNITS.some(d => d.value === a.doseUnit) ? a.doseUnit : 'g') as DoseUnit,
+    doseUnit: (DOSE_UNITS.some(d => d === a.doseUnit) ? a.doseUnit : 'g') as DoseUnit,
     addedAt: a.addedAtUtc.slice(0, 10),
     notes: a.notes ?? ''
   }))
@@ -157,21 +142,21 @@ export function additionsFromDto(
 
 const isoSafe = (n: number): boolean => Number.isFinite(n) && n > 0
 
-/** Валидация строк перед сохранением: текст ошибки или null. */
-export function validateYeastRows(rows: YeastRow[]): string | null {
+/** Валидация строк перед сохранением: ключ ошибки (t) или null. */
+export function validateYeastRows(rows: YeastRow[], t: TranslateFn): string | null {
   for (const [i, r] of rows.entries()) {
     if (r.strainId === '') continue // пустые строки пропускаются
-    if (!isoSafe(Number(r.doseAmount))) return `Дрожжи, строка ${i + 1}: укажите дозировку числом`
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(r.addedAt)) return `Дрожжи, строка ${i + 1}: укажите дату внесения`
+    if (!isoSafe(Number(r.doseAmount))) return t('composition.err.yeastDose', { row: i + 1 })
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(r.addedAt)) return t('composition.err.yeastDate', { row: i + 1 })
   }
   return null
 }
 
-export function validateAdditionRows(rows: AdditionRow[]): string | null {
+export function validateAdditionRows(rows: AdditionRow[], t: TranslateFn): string | null {
   for (const [i, r] of rows.entries()) {
     if (r.name.trim() === '') continue
-    if (!isoSafe(Number(r.doseAmount))) return `Добавки, строка ${i + 1}: укажите дозировку числом`
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(r.addedAt)) return `Добавки, строка ${i + 1}: укажите время внесения`
+    if (!isoSafe(Number(r.doseAmount))) return t('composition.err.additionDose', { row: i + 1 })
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(r.addedAt)) return t('composition.err.additionDate', { row: i + 1 })
   }
   return null
 }
@@ -183,6 +168,7 @@ function NewStrainModal(props: {
   onCreated(strain: StrainDto): void
   onClose(): void
 }): ReactElement {
+  const { t } = useTranslation()
   const createStrain = useCatalogsStore((s) => s.createStrain)
   const [error, setError] = useState<string | null>(null)
 
@@ -193,7 +179,7 @@ function NewStrainModal(props: {
     const data = new FormData(form)
     const name = String(data.get('name') ?? '').trim()
     if (name === '') {
-      setError('Укажите название штамма')
+      setError(t('composition.newStrain.nameRequired'))
       return
     }
     const num = (key: string): number | null => {
@@ -211,12 +197,12 @@ function NewStrainModal(props: {
       })
       props.onCreated(created)
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setError(describeError(e, t))
     }
   }
 
   return (
-    <Modal title="Новый штамм дрожжей" onClose={props.onClose}>
+    <Modal title={t('composition.newStrain.title')} onClose={props.onClose}>
       <form
         onSubmit={(e) => {
           void submit(e)
@@ -224,33 +210,33 @@ function NewStrainModal(props: {
         className="form-grid"
       >
         <label>
-          Название *
-          <input name="name" required placeholder="Lalvin EC-1118" />
+          {t('composition.newStrain.name')}
+          <input name="name" required placeholder={t('composition.newStrain.namePh')} />
         </label>
         <label>
-          Производитель
+          {t('composition.newStrain.producer')}
           <input name="producer" placeholder="Lallemand" />
         </label>
         <label>
-          t° мин, °C
+          {t('composition.newStrain.tempMin')}
           <input name="tempMinC" type="number" step="1" />
         </label>
         <label>
-          t° макс, °C
+          {t('composition.newStrain.tempMax')}
           <input name="tempMaxC" type="number" step="1" />
         </label>
         <label>
-          Толерантность к спирту, % об.
+          {t('composition.newStrain.tolerance')}
           <input name="alcoholTolerancePct" type="number" step="0.5" />
         </label>
         <label>
-          Заметки
+          {t('composition.newStrain.notes')}
           <input name="notes" />
         </label>
         {error ? <p className="error-text">{error}</p> : null}
         <div className="form-actions">
-          <button type="submit">Создать и выбрать</button>
-          <button type="button" onClick={props.onClose}>Отмена</button>
+          <button type="submit">{t('composition.newStrain.submit')}</button>
+          <button type="button" onClick={props.onClose}>{t('common.cancel')}</button>
         </div>
       </form>
     </Modal>
@@ -262,6 +248,7 @@ export function YeastRowsEditor(props: {
   onChange(rows: YeastRow[]): void
   strains: StrainDto[]
 }): ReactElement {
+  const { t } = useTranslation()
   const { rows, onChange, strains } = props
   const [creatingFor, setCreatingFor] = useState<number | null>(null)
   const update = (idx: number, patch: Partial<YeastRow>): void => {
@@ -271,10 +258,13 @@ export function YeastRowsEditor(props: {
     <div className="rows-editor">
       {rows.map((row, idx) => (
         <fieldset key={idx} className="row-fieldset">
-          <legend>Дрожжи {rows.length > 1 ? idx + 1 : ''}</legend>
+          <legend>
+            {t('composition.yeastRow')}
+            {rows.length > 1 ? ` ${idx + 1}` : ''}
+          </legend>
           <div className="inline-fields">
             <label>
-              Штамм из справочника
+              {t('composition.strainFromCatalog')}
               <select
                 value={row.strainId}
                 onChange={(e) => {
@@ -285,17 +275,17 @@ export function YeastRowsEditor(props: {
                   update(idx, { strainId: e.target.value })
                 }}
               >
-                <option value="">— выберите штамм —</option>
+                <option value="">{t('composition.chooseStrain')}</option>
                 {strains.map((s) => (
                   <option key={s.id} value={s.id}>{s.name}</option>
                 ))}
-                <option value={NEW_STRAIN}>＋ Новый штамм…</option>
+                <option value={NEW_STRAIN}>{t('composition.newStrainOption')}</option>
               </select>
             </label>
           </div>
           <div className="inline-fields">
             <label>
-              Дозировка
+              {t('composition.dose')}
               <input
                 value={row.doseAmount}
                 onChange={(e) => update(idx, { doseAmount: e.target.value })}
@@ -305,16 +295,16 @@ export function YeastRowsEditor(props: {
               />
             </label>
             <label>
-              Единицы
+              {t('composition.units')}
               <select
                 value={row.doseUnit}
                 onChange={(e) => update(idx, { doseUnit: e.target.value as DoseUnit })}
               >
-                {DOSE_UNITS.map((u) => <option key={u.value} value={u.value}>{u.label}</option>)}
+                {DOSE_UNITS.map((u) => <option key={u} value={u}>{t(`batches.doseUnit.${u}`)}</option>)}
               </select>
             </label>
             <label>
-              Дата внесения
+              {t('composition.addedAt')}
               <input
                 value={row.addedAt}
                 onChange={(e) => update(idx, { addedAt: e.target.value })}
@@ -322,7 +312,7 @@ export function YeastRowsEditor(props: {
               />
             </label>
             <label>
-              Дата производства
+              {t('composition.productionDate')}
               <input
                 value={row.productionDate}
                 onChange={(e) => update(idx, { productionDate: e.target.value })}
@@ -335,12 +325,12 @@ export function YeastRowsEditor(props: {
             className="row-remove"
             onClick={() => onChange(rows.filter((_, i) => i !== idx))}
           >
-            Убрать строку
+            {t('composition.removeRow')}
           </button>
         </fieldset>
       ))}
       <button type="button" onClick={() => onChange([...rows, emptyYeastRow()])}>
-        + Добавить дрожжи
+        {t('composition.addYeast')}
       </button>
       {creatingFor != null ? (
         <NewStrainModal
@@ -359,6 +349,7 @@ export function AdditionRowsEditor(props: {
   rows: AdditionRow[]
   onChange(rows: AdditionRow[]): void
 }): ReactElement {
+  const { t } = useTranslation()
   const { rows, onChange } = props
   const update = (idx: number, patch: Partial<AdditionRow>): void => {
     onChange(rows.map((r, i) => (i === idx ? { ...r, ...patch } : r)))
@@ -367,29 +358,32 @@ export function AdditionRowsEditor(props: {
     <div className="rows-editor">
       {rows.map((row, idx) => (
         <fieldset key={idx} className="row-fieldset">
-          <legend>Добавка {rows.length > 1 ? idx + 1 : ''}</legend>
+          <legend>
+            {t('composition.additionRow')}
+            {rows.length > 1 ? ` ${idx + 1}` : ''}
+          </legend>
           <div className="inline-fields">
             <label>
-              Название
+              {t('composition.name')}
               <input
                 value={row.name}
                 onChange={(e) => update(idx, { name: e.target.value })}
-                placeholder="Диаммонийфосфат"
+                placeholder={t('composition.namePh')}
               />
             </label>
             <label>
-              Тип
+              {t('composition.kind')}
               <select
                 value={row.kind}
                 onChange={(e) => update(idx, { kind: e.target.value as AdditionKind })}
               >
-                {Object.entries(ADDITION_KIND_LABELS).map(([v, label]) => (
-                  <option key={v} value={v}>{label}</option>
+                {additionKindSchema.options.map((v) => (
+                  <option key={v} value={v}>{t(`batches.additionKind.${v}`)}</option>
                 ))}
               </select>
             </label>
             <label>
-              Дозировка
+              {t('composition.dose')}
               <input
                 value={row.doseAmount}
                 onChange={(e) => update(idx, { doseAmount: e.target.value })}
@@ -399,16 +393,16 @@ export function AdditionRowsEditor(props: {
               />
             </label>
             <label>
-              Единицы
+              {t('composition.units')}
               <select
                 value={row.doseUnit}
                 onChange={(e) => update(idx, { doseUnit: e.target.value as DoseUnit })}
               >
-                {DOSE_UNITS.map((u) => <option key={u.value} value={u.value}>{u.label}</option>)}
+                {DOSE_UNITS.map((u) => <option key={u} value={u}>{t(`batches.doseUnit.${u}`)}</option>)}
               </select>
             </label>
             <label>
-              Время внесения (дата)
+              {t('composition.addedAtDate')}
               <input
                 value={row.addedAt}
                 onChange={(e) => update(idx, { addedAt: e.target.value })}
@@ -421,12 +415,12 @@ export function AdditionRowsEditor(props: {
             className="row-remove"
             onClick={() => onChange(rows.filter((_, i) => i !== idx))}
           >
-            Убрать строку
+            {t('composition.removeRow')}
           </button>
         </fieldset>
       ))}
       <button type="button" onClick={() => onChange([...rows, emptyAdditionRow()])}>
-        + Добавить добавку
+        {t('composition.addAddition')}
       </button>
     </div>
   )
@@ -445,6 +439,7 @@ export function CompositionDialog(props: {
   onSaveYeast(rows: YeastInput[]): Promise<void>
   onSaveAdditions(rows: AdditionInput[]): Promise<void>
 }): ReactElement {
+  const { t } = useTranslation()
   const [yeastRows, setYeastRows] = useState(props.initialYeast)
   const [additionRows, setAdditionRows] = useState(props.initialAdditions)
   const [error, setError] = useState<string | null>(null)
@@ -455,19 +450,19 @@ export function CompositionDialog(props: {
     setError(null)
     try {
       if (props.kind === 'yeast') {
-        const err = validateYeastRows(yeastRows)
+        const err = validateYeastRows(yeastRows, t)
         if (err) { setError(err); return }
         setSaving(true)
         await props.onSaveYeast(yeastRowsToInput(yeastRows))
       } else {
-        const err = validateAdditionRows(additionRows)
+        const err = validateAdditionRows(additionRows, t)
         if (err) { setError(err); return }
         setSaving(true)
         await props.onSaveAdditions(additionRowsToInput(additionRows))
       }
       props.onClose()
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setError(describeError(e, t))
     } finally {
       setSaving(false)
     }
@@ -483,8 +478,8 @@ export function CompositionDialog(props: {
         )}
         {error ? <p className="error-text">{error}</p> : null}
       <div className="form-actions">
-        <button type="submit" disabled={saving}>{saving ? 'Сохранение…' : 'Сохранить'}</button>
-        <button type="button" onClick={props.onClose}>Отмена</button>
+        <button type="submit" disabled={saving}>{saving ? t('common.saving') : t('common.save')}</button>
+        <button type="button" onClick={props.onClose}>{t('common.cancel')}</button>
       </div>
     </form>
     </Modal>

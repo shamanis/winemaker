@@ -1,14 +1,16 @@
 import type { ReactElement } from 'react'
-import { GLOSSARY } from '../help/glossary'
+import { useTranslation } from 'react-i18next'
 import { useUiStore } from '../store/ui-store'
 
 /**
  * Термин с подсказкой при наведении (спека 6.4.1): пунктирное
- * подчёркивание; клик открывает таб Справка.
+ * подчёркивание; клик открывает таб Справка. Определение — из каталога
+ * переводов (help.termDesc.*).
  */
 export function Term(props: { id: string; children?: ReactElement | string }): ReactElement {
+  const { t } = useTranslation()
   const setTab = useUiStore((s) => s.setTab)
-  const text = GLOSSARY[props.id] ?? props.id
+  const text = t(`help.termDesc.${props.id}`, { defaultValue: props.id })
   return (
     <abbr
       className="term"
@@ -20,7 +22,7 @@ export function Term(props: { id: string; children?: ReactElement | string }): R
         if (e.key === 'Enter') setTab('help')
       }}
     >
-      {props.children ?? props.id}
+      {props.children ?? t(`help.term.${props.id}`, { defaultValue: props.id })}
     </abbr>
   )
 }

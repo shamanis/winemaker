@@ -11,6 +11,9 @@ import { MeasurementRepository } from './measurements/repository'
 import { createResolveContextProvider } from './measurements/context'
 import { OperationRepository } from './journal/repository'
 import { registerIpcHandlers } from './ipc/register'
+import { rebuildMenu } from './menu'
+import { setMainLanguage, mainT } from './main-i18n'
+import { resolveLanguage, type LanguageSetting } from '../shared/i18n/resolve-language'
 import {
   spawnUtilityUtility,
   utilityModulePath,
@@ -97,6 +100,13 @@ async function main(): Promise<void> {
 
   repo = new AppStateRepository(dbHandle.db, () => scheduler?.markDirty())
 
+  // Язык main: настройка language ('system' — по языку ОС), design D4.
+  const storedSettings = repo.get<{ language?: LanguageSetting }>('settings')
+  setMainLanguage(
+    resolveLanguage(storedSettings?.language ?? 'system', app.getLocale())
+  )
+  rebuildMenu()
+
   const markDirty = (): void => scheduler?.markDirty()
   const instruments = new InstrumentRepository(dbHandle.db, markDirty)
   const strains = new YeastStrainRepository(dbHandle.db, markDirty)
@@ -104,7 +114,8 @@ async function main(): Promise<void> {
   const measurements = new MeasurementRepository(
     dbHandle.db,
     markDirty,
-    createResolveContextProvider({ appState: repo, instruments, batches })
+    createResolveContextProvider({ appState: repo, instruments, batches }),
+    mainT
   )
   const operations = new OperationRepository(dbHandle.db, markDirty)
 

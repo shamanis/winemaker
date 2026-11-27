@@ -1,4 +1,5 @@
 import { useEffect, useMemo, type ReactElement } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { MeasurementDto } from '@shared/ipc/contracts'
 import { brixToSg } from '@shared/calculations/density'
 import { useCatalogsStore } from '../store/catalogs-store'
@@ -52,6 +53,7 @@ export function DensityChart(props: {
   measurements: MeasurementDto[]
   onOpen(measurementId: string): void
 }): ReactElement {
+  const { t } = useTranslation()
   const { measurements, onOpen } = props
   const instruments = useCatalogsStore((s) => s.instruments)
   const catalogsLoaded = useCatalogsStore((s) => s.loaded)
@@ -86,7 +88,7 @@ export function DensityChart(props: {
   )
 
   if (points.length === 0) {
-    return <p className="muted">Пока нет плотностей для графика.</p>
+    return <p className="muted">{t('chart.empty')}</p>
   }
 
   const tMin = points[0]!.t
@@ -115,7 +117,7 @@ export function DensityChart(props: {
 
   return (
     <figure className="chart">
-      <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} role="img" aria-label="График плотности" className="chart-svg">
+      <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} role="img" aria-label={t('chart.ariaLabel')} className="chart-svg">
         {/* Оси */}
         <line x1={PAD.left} y1={HEIGHT - PAD.bottom} x2={WIDTH - PAD.right} y2={HEIGHT - PAD.bottom} className="chart-axis" />
         <line x1={PAD.left} y1={PAD.top} x2={PAD.left} y2={HEIGHT - PAD.bottom} className="chart-axis" />
@@ -139,10 +141,10 @@ export function DensityChart(props: {
         )}
       </svg>
       <figcaption className="chart-legend">
-        <span><svg width="12" height="12"><circle cx="6" cy="6" r="5" className="chart-marker-hydro" /></svg> ареометр</span>
-        <span><svg width="12" height="12"><polygon points="6,1 11,6 6,11 1,6" className="chart-marker-refr" /></svg> рефрактометр</span>
-        <span><svg width="12" height="12"><rect x="2" y="2" width="8" height="8" className="chart-marker-other" /></svg> иной прибор</span>
-        <span className="muted">━ скорректированные · ┄ сырые</span>
+        <span><svg width="12" height="12"><circle cx="6" cy="6" r="5" className="chart-marker-hydro" /></svg> {t('chart.legendHydrometer')}</span>
+        <span><svg width="12" height="12"><polygon points="6,1 11,6 6,11 1,6" className="chart-marker-refr" /></svg> {t('chart.legendRefractometer')}</span>
+        <span><svg width="12" height="12"><rect x="2" y="2" width="8" height="8" className="chart-marker-other" /></svg> {t('chart.legendOther')}</span>
+        <span className="muted">{t('chart.legendLine')}</span>
       </figcaption>
     </figure>
   )

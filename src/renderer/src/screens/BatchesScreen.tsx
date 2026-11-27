@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactElement } from 'react'
-import type { BatchDto, BatchFullDto, BatchStatus, FinalResultDto, MeasurementDto } from '@shared/ipc/contracts'
+import { useTranslation } from 'react-i18next'
+import type { BatchDto, BatchFullDto, BatchStatus, FinalResultDto } from '@shared/ipc/contracts'
+import { batchStatusSchema } from '@shared/ipc/contracts'
 import { resolveOgSg } from '@shared/calculations/density'
 import {
   apparentAttenuation,
@@ -7,13 +9,14 @@ import {
   formatAbv,
   formatDensity,
   hallAbv,
+  MIN_POINTS,
   residualSugar
 } from '@shared/calculations/analysis'
 import { novotny } from '@shared/calculations/novotny'
 import { invertBrixToSg } from "@shared/calculations/correction"
 import { toUtcIso } from '@shared/time/utc'
-import { useBatchesStore, STATUS_LABELS, daysFromStart } from '../store/batches-store'
-import { useCatalogsStore, INSTRUMENT_TYPE_LABELS } from '../store/catalogs-store'
+import { useBatchesStore, daysFromStart } from '../store/batches-store'
+import { useCatalogsStore } from '../store/catalogs-store'
 import { useSettingsStore } from '../store/settings-store'
 import { useMeasurementsStore, lastDensityMeasurement } from '../store/measurements-store'
 import {
@@ -27,13 +30,13 @@ import {
   emptyAdditionRow,
   yeastFromDto,
   additionsFromDto,
-  doseUnitLabel,
   resolveStrainDisplay,
   CompositionDialog,
   type YeastRow,
   type AdditionRow
 } from '../ui/composition'
 import { api } from '../api'
+import { describeError } from '../errors'
 import {
   MeasurementsSection,
   MeasurementDialog,
@@ -50,6 +53,7 @@ import { Modal } from '../ui/Modal'
  * цикл статусов, архивация с итогом, подтверждение удаления.
  */
 export function BatchesScreen(): ReactElement {
+  const { t } = useTranslation()
   const active = useBatchesStore((s) => s.active)
   const archived = useBatchesStore((s) => s.archived)
   const selected = useBatchesStore((s) => s.selected)
@@ -68,17 +72,35 @@ export function BatchesScreen(): ReactElement {
     void init()
   }, [init])
 
+  /** Диалог подтверждения удаления — общий для списка и карточки (ранние
+   * return'ы ниже иначе его не отрисовывают, и кнопка «Удалить…» мертва). */
+  const confirmDialog = confirmDelete ? (
+    <ConfirmDialog
+      title={t('batches.deleteTitle')}
+      text={t('batches.deleteText')}
+      confirmLabel={t('batches.delete')}
+      onConfirm={() => {
+        void remove(confirmDelete)
+        setConfirmDelete(null)
+      }}
+      onCancel={() => setConfirmDelete(null)}
+    />
+  ) : null
+
   if (!loaded) {
-    return <section className="screen"><p className="muted">Загрузка партий…</p></section>
+    return <section className="screen"><p className="muted">{t('batches.loading')}</p></section>
   }
 
   if (selected) {
     return (
-      <BatchCard
-        full={selected}
-        onBack={closeSelection}
-        onDelete={() => setConfirmDelete(selected.batch.id)}
-      />
+      <>
+        <BatchCard
+          full={selected}
+          onBack={closeSelection}
+          onDelete={() => setConfirmDelete(selected.batch.id)}
+        />
+        {confirmDialog}
+      </>
     )
   }
 
@@ -93,12 +115,12 @@ export function BatchesScreen(): ReactElement {
   return (
     <section className="screen">
       <div className="screen-header">
-        <h2>Партии</h2>
+        <h2>{t('batches.title')}</h2>
         <button
           type="button"
           className="btn-fab"
-          title="Новая партия"
-          aria-label="Новая партия"
+          title={t('batches.newBatch')}
+          aria-label={t('batches.newBatch')}
           onClick={() => setCreating(true)}
         >
           +
@@ -116,19 +138,18 @@ export function BatchesScreen(): ReactElement {
         /* Нет партий: приглашение по центру области (ui-shell 7.2.1) */
         <div className="empty-screen">
           <div className="empty-card">
-            <h2>Поставьте первую партию</h2>
+            <h2>{t('batches.empty.title')}</h2>
             <p>
-              Замеры, операции и заметки будут собираться в единый журнал
-              этой партии.
+              {t('batches.empty.text')}
             </p>
-            <button type="button" onClick={() => setCreating(true)}>Новая партия</button>
+            <button type="button" onClick={() => setCreating(true)}>{t('batches.newBatch')}</button>
           </div>
         </div>
       )}
 
       {archived.length > 0 ? (
         <>
-          <h3>Архив</h3>
+          <h3>{t('batches.archive')}</h3>
           <BatchTable
             batches={archived}
             archived
@@ -138,18 +159,7 @@ export function BatchesScreen(): ReactElement {
         </>
       ) : null}
 
-      {confirmDelete ? (
-        <ConfirmDialog
-          title="Удалить партию?"
-          text="Партия, её дрожжи, добавки и история статусов будут удалены безвозвратно."
-          confirmLabel="Удалить"
-          onConfirm={() => {
-            void remove(confirmDelete)
-            setConfirmDelete(null)
-          }}
-          onCancel={() => setConfirmDelete(null)}
-        />
-      ) : null}
+      {confirmDialog}
 
       {quickMeasureBatch ? (
         <MeasurementDialog
@@ -168,21 +178,22 @@ function BatchTable(props: {
   onOpen(id: string): void
   onMeasure(id: string): void
 }): ReactElement {
+  const { t } = useTranslation()
   const { batches, archived, onOpen, onMeasure } = props
   return (
     <div className="btable-wrap">
       <table className="btable">
         <thead>
           <tr>
-            <th>Название</th>
-            <th>Статус</th>
-            <th>Дата создания</th>
-            <th>Сырьё</th>
-            <th>OG</th>
-            <th>Крепость</th>
-            <th>Сбраживание</th>
-            <th>Остаточный сахар</th>
-            <th className="actions">Действия</th>
+            <th>{t('batches.columns.name')}</th>
+            <th>{t('batches.columns.status')}</th>
+            <th>{t('batches.columns.createdAt')}</th>
+            <th>{t('batches.columns.rawMaterial')}</th>
+            <th>{t('batches.columns.og')}</th>
+            <th>{t('batches.columns.abv')}</th>
+            <th>{t('batches.columns.attenuation')}</th>
+            <th>{t('batches.columns.residualSugar')}</th>
+            <th className="actions">{t('batches.columns.actions')}</th>
           </tr>
         </thead>
         <tbody>
@@ -209,6 +220,7 @@ function BatchTableRow(props: {
   onMeasure(id: string): void
 }): ReactElement {
   const { batch, archived, onOpen, onMeasure } = props
+  const { t } = useTranslation()
   const list = useMeasurementsStore((s) => s.byBatch[batch.id])
   const loadFor = useMeasurementsStore((s) => s.loadFor)
   const unit = useSettingsStore((s) => s.settings?.densityUnit ?? 'sg')
@@ -232,25 +244,25 @@ function BatchTableRow(props: {
   return (
     <tr>
       <td><strong>{batch.title}</strong></td>
-      <td><span className={`chip chip-${batch.status}`}>{STATUS_LABELS[batch.status]}</span></td>
+      <td><span className={`chip chip-${batch.status}`}>{t(`batches.status.${batch.status}`)}</span></td>
       <td className="num">{batch.startDateUtc.slice(0, 10)}</td>
       <td>{batch.rawMaterial}</td>
       <td className="num">{formatDensity(ogSg, unit)}</td>
-      <td className="num">{formatAbv(abv)}</td>
+      <td className="num">{formatAbv(abv, t)}</td>
       <td className="num">{attenuation != null ? `${attenuation.toFixed(1)} %` : '—'}</td>
-      <td className="num">{sugar != null ? `${sugar.toFixed(0)} г/л` : '—'}</td>
+      <td className="num">{sugar != null ? t('format.gPerL', { value: sugar.toFixed(0) }) : '—'}</td>
       <td className="actions">
         {!archived ? (
           <button
             type="button"
-            title="Быстрый замер плотности"
+            title={t('batches.quickMeasure')}
             onClick={() => onMeasure(batch.id)}
           >
-            +Замер
+            {t('batches.quickMeasureBtn')}
           </button>
         ) : null}
-        <button type="button" title="Открыть партию" onClick={() => onOpen(batch.id)}>
-          Обзор
+        <button type="button" title={t('batches.open')} onClick={() => onOpen(batch.id)}>
+          {t('batches.openBtn')}
         </button>
       </td>
     </tr>
@@ -259,6 +271,7 @@ function BatchTableRow(props: {
 
 function BatchCreateForm(props: { onDone(): void; onCancel(): void }): ReactElement {
   const { onDone, onCancel } = props
+  const { t } = useTranslation()
   const instruments = useCatalogsStore((s) => s.instruments)
   const strains = useCatalogsStore((s) => s.strains)
   const settings = useSettingsStore((s) => s.settings)
@@ -303,12 +316,12 @@ function BatchCreateForm(props: { onDone(): void; onCancel(): void }): ReactElem
     const form = new FormData(event.currentTarget)
     const gravityRaw = Number(gravityValue)
     if (!Number.isFinite(gravityRaw) || gravityValue.trim() === '') {
-      setError('Укажите начальную плотность')
+      setError(t('batches.startGravityRequired'))
       return
     }
-    const yeastError = validateYeastRows(yeastRows)
+    const yeastError = validateYeastRows(yeastRows, t)
     if (yeastError) { setError(yeastError); return }
-    const additionsError = validateAdditionRows(additionRows)
+    const additionsError = validateAdditionRows(additionRows, t)
     if (additionsError) { setError(additionsError); return }
     setSubmitting(true)
     try {
@@ -333,7 +346,7 @@ function BatchCreateForm(props: { onDone(): void; onCancel(): void }): ReactElem
       })
       onDone()
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setError(describeError(e, t))
     } finally {
       setSubmitting(false)
     }
@@ -342,30 +355,30 @@ function BatchCreateForm(props: { onDone(): void; onCancel(): void }): ReactElem
   return (
     <section className="screen">
       <div className="screen-header">
-        <h2>Новая партия</h2>
-        <button type="button" onClick={onCancel}>Отмена</button>
+        <h2>{t('batches.create.title')}</h2>
+        <button type="button" onClick={onCancel}>{t('common.cancel')}</button>
       </div>
 
       <form className="form-grid" onSubmit={(e) => void submit(e)}>
-        <h3>Карточка</h3>
+        <h3>{t('batches.create.card')}</h3>
         <label>
-          Название партии
-          <input name="title" required placeholder="Изабелла 2026" />
+          {t('batches.create.field.title')}
+          <input name="title" required placeholder={t('batches.create.ph.title')} />
         </label>
         <label>
-          Сырьё (сорт)
-          <input name="rawMaterial" required placeholder="Виноград Изабелла" />
+          {t('batches.create.field.rawMaterial')}
+          <input name="rawMaterial" required placeholder={t('batches.create.ph.rawMaterial')} />
         </label>
         <label>
-          Планируемый стиль
-          <input name="style" placeholder="полусухое красное" />
+          {t('batches.create.field.style')}
+          <input name="style" placeholder={t('batches.create.ph.style')} />
         </label>
         <label>
-          Объём сусла, л
+          {t('batches.create.field.volume')}
           <input name="volumeLiters" type="number" step="0.1" min="0.1" />
         </label>
         <label>
-          Дата постановки
+          {t('batches.create.field.startDate')}
           <input
             name="startDate"
             type="date"
@@ -373,10 +386,10 @@ function BatchCreateForm(props: { onDone(): void; onCancel(): void }): ReactElem
           />
         </label>
 
-        <h3>Начальная плотность</h3>
+        <h3>{t('batches.create.section.startGravity')}</h3>
         <div className="inline-fields">
           <label>
-            Показание ({unit === 'brix' ? '°Bx' : 'SG'})
+            {t('batches.create.field.reading')} ({unit === 'brix' ? '°Bx' : 'SG'})
             <input
               name="gravity"
               type="number"
@@ -387,19 +400,19 @@ function BatchCreateForm(props: { onDone(): void; onCancel(): void }): ReactElem
             />
           </label>
           <label>
-            Единицы
+            {t('batches.create.field.units')}
             <select value={unit} onChange={(e) => setUnit(e.target.value as 'sg' | 'brix')}>
               <option value="brix">Brix</option>
               <option value="sg">SG</option>
             </select>
           </label>
           <label>
-            Прибор
+            {t('batches.create.field.instrument')}
             <select value={instrumentId} onChange={(e) => setInstrumentId(e.target.value)}>
-              <option value="">Без прибора</option>
+              <option value="">{t('batches.create.noInstrument')}</option>
               {instruments.map((i) => (
                 <option key={i.id} value={i.id}>
-                  {i.name} ({INSTRUMENT_TYPE_LABELS[i.type]})
+                  {i.name} ({t(`catalogs.type.${i.type}`)})
                 </option>
               ))}
             </select>
@@ -407,37 +420,37 @@ function BatchCreateForm(props: { onDone(): void; onCancel(): void }): ReactElem
         </div>
         <p className="muted" aria-live="polite">
           {ogPreview
-            ? `OG будет сохранён в SG: ${ogPreview.ogSg.toFixed(4)}${
+            ? `${t('batches.create.ogPreview', { sg: ogPreview.ogSg.toFixed(4) })}${
                 ogPreview.correctedBrix !== null
-                  ? ` (скорректированное показание: ${ogPreview.correctedBrix.toFixed(2)} °Bx)`
+                  ? ` ${t('batches.create.ogPreviewCorrected', { brix: ogPreview.correctedBrix.toFixed(2) })}`
                   : ''
               }`
-            : 'Введите показание — OG в SG рассчитается автоматически при сохранении.'}
+            : t('batches.create.ogPreviewHint')}
         </p>
 
         <div className="inline-fields">
           <label>
-            pH сусла
+            {t('batches.create.field.ph')}
             <input name="ph" type="number" step="0.01" min="2" max="7" />
           </label>
           <label>
-            Температура, °C
+            {t('batches.create.field.tempC')}
             <input name="tempC" type="number" step="0.1" min="-5" max="60" />
           </label>
         </div>
 
-        <h3><Term id="ferment">Дрожжи</Term></h3>
+        <h3><Term id="ferment">{t('batches.create.section.yeast')}</Term></h3>
         <YeastRowsEditor rows={yeastRows} onChange={setYeastRows} strains={strains} />
 
-        <h3>Стартовые добавки</h3>
+        <h3>{t('batches.create.section.additions')}</h3>
         <AdditionRowsEditor rows={additionRows} onChange={setAdditionRows} />
 
         {error ? <p className="error-text">{error}</p> : null}
         <div className="form-actions">
           <button type="submit" disabled={submitting}>
-            {submitting ? 'Сохранение…' : 'Поставить партию'}
+            {submitting ? t('common.saving') : t('batches.create.submit')}
           </button>
-          <button type="button" onClick={onCancel}>Отмена</button>
+          <button type="button" onClick={onCancel}>{t('common.cancel')}</button>
         </div>
       </form>
     </section>
@@ -446,14 +459,15 @@ function BatchCreateForm(props: { onDone(): void; onCancel(): void }): ReactElem
 
 type BatchTab = 'overview' | 'measurements' | 'journal'
 
-const BATCH_TABS: Array<{ id: BatchTab; label: string }> = [
-  { id: 'overview', label: 'Обзор' },
-  { id: 'measurements', label: 'Замеры' },
-  { id: 'journal', label: 'Журнал' }
+const BATCH_TABS: Array<{ id: BatchTab }> = [
+  { id: 'overview' },
+  { id: 'measurements' },
+  { id: 'journal' }
 ]
 
 function BatchCard(props: { full: BatchFullDto; onBack(): void; onDelete(): void }): ReactElement {
   const { full, onBack, onDelete } = props
+  const { t } = useTranslation()
   const { batch } = full
   const changeStatus = useBatchesStore((s) => s.changeStatus)
   const archive = useBatchesStore((s) => s.archive)
@@ -472,40 +486,38 @@ function BatchCard(props: { full: BatchFullDto; onBack(): void; onDelete(): void
   }, [initCatalogs])
 
   const isArchived = batch.status === 'archived'
-  const otherStatuses = (Object.keys(STATUS_LABELS) as BatchStatus[]).filter(
-    (s) => s !== batch.status
-  )
+  const otherStatuses = batchStatusSchema.options.filter((s) => s !== batch.status)
 
   const startParams = batch.startParams
 
   const exportJson = async (): Promise<void> => {
     try {
       const path = await api.exportBatch(batch.id)
-      setExportNote(path ? `Экспортировано: ${path}` : 'Экспорт отменён')
+      setExportNote(path ? t('batches.exported', { path }) : t('batches.exportCancelled'))
     } catch (e) {
-      setExportNote(`Ошибка: ${e instanceof Error ? e.message : String(e)}`)
+      setExportNote(describeError(e, t))
     }
   }
 
   return (
     <section className="screen">
       <div className="screen-header">
-        <button type="button" onClick={onBack}>← К списку</button>
+        <button type="button" onClick={onBack}>{t('batches.back')}</button>
         <h2>{batch.title}</h2>
-        <span className={`chip chip-${batch.status}`}>{STATUS_LABELS[batch.status]}</span>
+        <span className={`chip chip-${batch.status}`}>{t(`batches.status.${batch.status}`)}</span>
       </div>
 
-      <div className="subtabs" role="tablist" aria-label="Разделы партии">
-        {BATCH_TABS.map((t) => (
+      <div className="subtabs" role="tablist" aria-label={t('batches.cardTabsAria')}>
+        {BATCH_TABS.map((bt) => (
           <button
-            key={t.id}
+            key={bt.id}
             type="button"
             role="tab"
-            aria-selected={tab === t.id}
-            className={tab === t.id ? 'subtab active' : 'subtab'}
-            onClick={() => setTab(t.id)}
+            aria-selected={tab === bt.id}
+            className={tab === bt.id ? 'subtab active' : 'subtab'}
+            onClick={() => setTab(bt.id)}
           >
-            {t.label}
+            {t(`batches.tabs.${bt.id}`)}
           </button>
         ))}
       </div>
@@ -514,20 +526,20 @@ function BatchCard(props: { full: BatchFullDto; onBack(): void; onDelete(): void
         <>
           <div className="card-grid">
             <div className="card">
-              <h3>Карточка</h3>
+              <h3>{t('batches.create.card')}</h3>
               <dl>
-                <dt>Сырьё</dt><dd>{batch.rawMaterial}</dd>
-                <dt>Стиль</dt><dd>{batch.style ?? '—'}</dd>
-                <dt>Объём</dt><dd>{batch.volumeLiters !== null ? `${batch.volumeLiters} л` : '—'}</dd>
-                <dt>Постановка</dt><dd>{batch.startDateUtc.slice(0, 10)}</dd>
-                <dt>Дней от постановки</dt><dd>{daysFromStart(batch.startDateUtc)}</dd>
+                <dt>{t('batches.card.rawMaterial')}</dt><dd>{batch.rawMaterial}</dd>
+                <dt>{t('batches.card.style')}</dt><dd>{batch.style ?? '—'}</dd>
+                <dt>{t('batches.card.volume')}</dt><dd>{batch.volumeLiters !== null ? t('format.liters', { value: batch.volumeLiters }) : '—'}</dd>
+                <dt>{t('batches.card.start')}</dt><dd>{batch.startDateUtc.slice(0, 10)}</dd>
+                <dt>{t('batches.card.daysFromStart')}</dt><dd>{daysFromStart(batch.startDateUtc)}</dd>
               </dl>
             </div>
 
             <div className="card">
-              <h3>Стартовые параметры</h3>
+              <h3>{t('batches.card.startGravity')}</h3>
               <dl>
-                <dt>Сырое показание</dt>
+                <dt>{t('batches.card.rawReading')}</dt>
                 <dd>
                   {startParams.gravity.raw.value} {startParams.gravity.raw.unit === 'brix' ? '°Bx' : 'SG'}
                 </dd>
@@ -535,21 +547,21 @@ function BatchCard(props: { full: BatchFullDto; onBack(): void; onDelete(): void
                 <dd>{formatDensity(startParams.gravity.ogSg, 'sg')}</dd>
                 {startParams.gravity.correctedBrix != null ? (
                   <>
-                    <dt>Скорректировано</dt>
+                    <dt>{t('batches.card.corrected')}</dt>
                     <dd>{startParams.gravity.correctedBrix.toFixed(2)} °Bx</dd>
                   </>
                 ) : null}
-                <dt>pH</dt><dd>{startParams.ph ?? '—'}</dd>
-                <dt>Температура</dt><dd>{startParams.tempC !== null && startParams.tempC !== undefined ? `${startParams.tempC} °C` : '—'}</dd>
+                <dt>{t('batches.card.ph')}</dt><dd>{startParams.ph ?? '—'}</dd>
+                <dt>{t('batches.card.tempC')}</dt><dd>{startParams.tempC !== null && startParams.tempC !== undefined ? `${startParams.tempC} °C` : '—'}</dd>
               </dl>
             </div>
 
             <CalculationsCard batch={batch} />
 
             <div className="card">
-              <h3>Дрожжи</h3>
+              <h3>{t('batches.card.yeast')}</h3>
               {full.yeast.length === 0 ? (
-                <p className="muted">Не внесены</p>
+                <p className="muted">{t('batches.card.notAdded')}</p>
               ) : (
                 <ul>
                   {full.yeast.map((y) => {
@@ -557,36 +569,36 @@ function BatchCard(props: { full: BatchFullDto; onBack(): void; onDelete(): void
                     return (
                       <li key={y.id}>
                         {strain.name}
-                        {strain.producer ? ` (${strain.producer})` : ''} — {y.doseAmount} {doseUnitLabel(y.doseUnit)}
+                        {strain.producer ? ` (${strain.producer})` : ''} — {y.doseAmount} {t(`batches.doseUnit.${y.doseUnit}`)}
                       </li>
                     )
                   })}
                 </ul>
               )}
               <button type="button" onClick={() => setCompositionDialog('yeast')}>
-                {full.yeast.length === 0 ? 'Внести…' : 'Изменить…'}
+                {full.yeast.length === 0 ? t('batches.card.add') : t('batches.card.edit')}
               </button>
-              <h3>Добавки</h3>
+              <h3>{t('batches.card.additions')}</h3>
               {full.additions.length === 0 ? (
-                <p className="muted">Не внесены</p>
+                <p className="muted">{t('batches.card.notAdded')}</p>
               ) : (
                 <ul>
                   {full.additions.map((a) => (
-                    <li key={a.id}>{a.name} — {a.doseAmount} {doseUnitLabel(a.doseUnit)}</li>
+                    <li key={a.id}>{a.name} — {a.doseAmount} {t(`batches.doseUnit.${a.doseUnit}`)}</li>
                   ))}
                 </ul>
               )}
               <button type="button" onClick={() => setCompositionDialog('additions')}>
-                {full.additions.length === 0 ? 'Внести…' : 'Изменить…'}
+                {full.additions.length === 0 ? t('batches.card.add') : t('batches.card.edit')}
               </button>
             </div>
 
             <div className="card">
-              <h3>История статусов</h3>
+              <h3>{t('batches.card.history')}</h3>
               <ol>
                 {full.history.map((h) => (
                   <li key={h.id}>
-                    {STATUS_LABELS[h.toStatus]} — {h.atUtc.slice(0, 16).replace('T', ' ')} UTC
+                    {t(`batches.status.${h.toStatus}`)} — {h.atUtc.slice(0, 16).replace('T', ' ')} UTC
                   </li>
                 ))}
               </ol>
@@ -595,13 +607,13 @@ function BatchCard(props: { full: BatchFullDto; onBack(): void; onDelete(): void
 
           {batch.finalResult ? (
             <div className="card">
-              <h3>Итоговые характеристики</h3>
+              <h3>{t('batches.final.title')}</h3>
               <dl>
-                <dt>Финальная плотность</dt>
+                <dt>{t('batches.final.gravity')}</dt>
                 <dd>{batch.finalResult.finalGravity ?? '—'}</dd>
-                <dt>Крепость</dt>
-                <dd>{formatAbv(batch.finalResult.abvPct)}</dd>
-                <dt>Органолептика</dt>
+                <dt>{t('batches.final.abv')}</dt>
+                <dd>{formatAbv(batch.finalResult.abvPct, t)}</dd>
+                <dt>{t('batches.final.notes')}</dt>
                 <dd>{batch.finalResult.tastingNotes ?? '—'}</dd>
               </dl>
             </div>
@@ -611,15 +623,15 @@ function BatchCard(props: { full: BatchFullDto; onBack(): void; onDelete(): void
             {!isArchived
               ? otherStatuses.map((s) => (
                   <button key={s} type="button" onClick={() => void changeStatus(batch.id, s)}>
-                    → {STATUS_LABELS[s]}
+                    → {t(`batches.status.${s}`)}
                   </button>
                 ))
               : null}
             {!isArchived ? (
-              <button type="button" onClick={() => setArchiving(true)}>Архивировать…</button>
+              <button type="button" onClick={() => setArchiving(true)}>{t('batches.archiveBtn')}</button>
             ) : null}
-            <button type="button" onClick={() => void exportJson()}>Экспорт JSON…</button>
-            <button type="button" className="danger" onClick={onDelete}>Удалить…</button>
+            <button type="button" onClick={() => void exportJson()}>{t('batches.exportBtn')}</button>
+            <button type="button" className="danger" onClick={onDelete}>{t('batches.deleteBtn')}</button>
           </div>
           {exportNote ? <p className="muted">{exportNote}</p> : null}
         </>
@@ -643,7 +655,7 @@ function BatchCard(props: { full: BatchFullDto; onBack(): void; onDelete(): void
 
       {compositionDialog ? (
         <CompositionDialog
-          title={compositionDialog === 'yeast' ? 'Дрожжи партии' : 'Стартовые добавки'}
+          title={compositionDialog === 'yeast' ? t('batches.card.yeastDialogTitle') : t('batches.card.additionsDialogTitle')}
           kind={compositionDialog}
           initialYeast={yeastFromDto(full.yeast)}
           initialAdditions={additionsFromDto(full.additions)}
@@ -660,6 +672,7 @@ function BatchCard(props: { full: BatchFullDto; onBack(): void; onDelete(): void
 /** Блок «Расчёты»: только по скорректированным значениям (спека fermentation-calculations). */
 function CalculationsCard(props: { batch: BatchDto }): ReactElement {
   const { batch } = props
+  const { t } = useTranslation()
   const list = useMeasurementsStore((s) => s.byBatch[batch.id])
   const unit = useSettingsStore((s) => s.settings?.densityUnit ?? 'sg')
   const instruments = useCatalogsStore((s) => s.instruments)
@@ -701,27 +714,28 @@ function CalculationsCard(props: { batch: BatchDto }): ReactElement {
 
   return (
     <div className="card">
-      <h3><Term id="abv">Расчёты</Term></h3>
+      <h3><Term id="abv">{t('batches.calc.title')}</Term></h3>
       <dl>
-        <dt>Крепость (текущая)</dt>
-        <dd>{formatAbv(abv)}</dd>
-        <dt>Сбраживание</dt>
+        <dt>{t('batches.calc.abvCurrent')}</dt>
+        <dd>{formatAbv(abv, t)}</dd>
+        <dt>{t('batches.calc.attenuation')}</dt>
         <dd>{attenuation != null ? `${attenuation.toFixed(1)} %` : '—'}</dd>
-        <dt>Остаточный сахар</dt>
-        <dd>{sugar != null ? `${sugar.toFixed(1)} г/л` : '—'}</dd>
-        <dt>Прогноз завершения</dt>
+        <dt>{t('batches.calc.residualSugar')}</dt>
+        <dd>{sugar != null ? t('format.gPerL', { value: sugar.toFixed(1) }) : '—'}</dd>
+        <dt>{t('batches.calc.forecast')}</dt>
         <dd>
           {forecast.kind === 'range'
             ? `${forecast.fromUtc.slice(0, 10)} — ${forecast.toUtc.slice(0, 10)}`
-            : forecast.message}
+            : t(`forecast.${forecast.reason}` as string,
+                forecast.reason === 'minPoints' ? { count: MIN_POINTS } : {})}
         </dd>
       </dl>
       <p className="muted">
-        Расчёты по скорректированным значениям ·{' '}
+        {t('batches.calc.note')} ·{' '}
         {isRefractometer
-          ? 'крепость — модель Новотного'
-          : 'формулы: Hall, Баллинг'}{' '}
-        · <Term id="abv">подробнее в Справке</Term>
+          ? t('batches.calc.abvNovotny')
+          : t('batches.calc.formulas')}{' '}
+        · <Term id="abv">{t('batches.calc.more')}</Term>
       </p>
     </div>
   )
@@ -731,6 +745,7 @@ function ArchiveDialog(props: {
   onConfirm(result: FinalResultDto): void
   onCancel(): void
 }): ReactElement {
+  const { t } = useTranslation()
   const submit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault()
     const form = new FormData(event.currentTarget)
@@ -746,24 +761,24 @@ function ArchiveDialog(props: {
   }
 
   return (
-    <Modal title="Архивировать партию" onClose={props.onCancel}>
+    <Modal title={t('batches.archiveDialog.title')} onClose={props.onCancel}>
       <form onSubmit={submit}>
-        <p className="muted">Укажите итоговые характеристики — они сохранятся вместе с историей.</p>
+        <p className="muted">{t('batches.archiveDialog.hint')}</p>
         <label>
-          Финальная плотность (SG)
+          {t('batches.archiveDialog.finalGravity')}
           <input name="finalGravity" type="number" step="0.0001" min="0.9" max="1.2" required />
         </label>
         <label>
-          Крепость, % об.
+          {t('batches.archiveDialog.abv')}
           <input name="abvPct" type="number" step="0.1" min="0" max="25" required />
         </label>
         <label>
-          Органолептические заметки
+          {t('batches.archiveDialog.notes')}
           <textarea name="tastingNotes" rows={3} />
         </label>
       <div className="form-actions">
-        <button type="submit">Архивировать</button>
-        <button type="button" onClick={props.onCancel}>Отмена</button>
+        <button type="submit">{t('batches.archiveDialog.submit')}</button>
+        <button type="button" onClick={props.onCancel}>{t('common.cancel')}</button>
       </div>
     </form>
     </Modal>
@@ -777,12 +792,13 @@ function ConfirmDialog(props: {
   onConfirm(): void
   onCancel(): void
 }): ReactElement {
+  const { t } = useTranslation()
   return (
     <Modal title={props.title} onClose={props.onCancel}>
       <p>{props.text}</p>
       <div className="form-actions">
         <button type="button" className="danger" onClick={props.onConfirm}>{props.confirmLabel}</button>
-        <button type="button" onClick={props.onCancel}>Отмена</button>
+        <button type="button" onClick={props.onCancel}>{t('common.cancel')}</button>
       </div>
     </Modal>
   )

@@ -1,18 +1,14 @@
 import { useEffect, useState, type FormEvent, type ReactElement } from 'react'
-import type { BatchDto, BatchStatus, OperationDto, OperationInput, OperationKind } from '@shared/ipc/contracts'
-import { STATUS_LABELS } from '../store/batches-store'
-import { useOperationsStore, OPERATION_KIND_LABELS } from '../store/operations-store'
+import { useTranslation } from 'react-i18next'
+import type { BatchDto, OperationDto, OperationInput, OperationKind } from '@shared/ipc/contracts'
+import { operationKindSchema } from '@shared/ipc/contracts'
+import { useOperationsStore } from '../store/operations-store'
 import { useMeasurementsStore } from '../store/measurements-store'
 import { useBatchesStore } from '../store/batches-store'
-import { doseUnitLabel, resolveStrainDisplay } from '../ui/composition'
+import { resolveStrainDisplay } from '../ui/composition'
 import { useCatalogsStore } from '../store/catalogs-store'
 import { Modal } from '../ui/Modal'
-
-const KIND_LABELS_MEASUREMENT: Record<string, string> = {
-  density: 'Плотность',
-  temperature: 'Температура',
-  ph: 'pH'
-}
+import { describeError } from '../errors'
 
 interface TimelineEntry {
   id: string
@@ -28,6 +24,7 @@ interface TimelineEntry {
  * статусов в одном таймлайне; CRUD операций.
  */
 export function JournalSection(props: { batch: BatchDto }): ReactElement {
+  const { t } = useTranslation()
   const { batch } = props
   const operations = useOperationsStore((s) => s.byBatch[batch.id])
   const loadOps = useOperationsStore((s) => s.loadFor)
@@ -59,7 +56,7 @@ export function JournalSection(props: { batch: BatchDto }): ReactElement {
       id: `m-${m.id}`,
       atUtc: m.measuredAtUtc,
       kind: 'measurement' as const,
-      label: KIND_LABELS_MEASUREMENT[m.kind] ?? m.kind,
+      label: t(`measurements.kind.${m.kind}`),
       detail:
         m.kind === 'density'
           ? `${m.rawValue} ${m.unit === 'brix' ? '°Bx' : 'SG'} → ${m.correctedSg?.toFixed(4)} SG`
@@ -70,7 +67,7 @@ export function JournalSection(props: { batch: BatchDto }): ReactElement {
       id: `o-${o.id}`,
       atUtc: o.atUtc,
       kind: 'operation' as const,
-      label: OPERATION_KIND_LABELS[o.kind as OperationKind] ?? o.kind,
+      label: t(`journal.kind.${o.kind}`),
       detail: '',
       notes: o.notes
     })),
@@ -80,8 +77,8 @@ export function JournalSection(props: { batch: BatchDto }): ReactElement {
         id: `y-${y.id}`,
         atUtc: y.addedAtUtc,
         kind: 'operation' as const,
-        label: 'Дрожжи внесены',
-        detail: `${strain.name}${strain.producer ? ` (${strain.producer})` : ''} — ${y.doseAmount} ${doseUnitLabel(y.doseUnit)}`,
+        label: t('journal.yeastAdded'),
+        detail: `${strain.name}${strain.producer ? ` (${strain.producer})` : ''} — ${y.doseAmount} ${t(`batches.doseUnit.${y.doseUnit}`)}`,
         notes: null
       }
     }),
@@ -89,16 +86,16 @@ export function JournalSection(props: { batch: BatchDto }): ReactElement {
       id: `a-${a.id}`,
       atUtc: a.addedAtUtc,
       kind: 'operation' as const,
-      label: 'Добавка',
-      detail: `${a.name} — ${a.doseAmount} ${doseUnitLabel(a.doseUnit)}`,
+      label: t('journal.addition'),
+      detail: `${a.name} — ${a.doseAmount} ${t(`batches.doseUnit.${a.doseUnit}`)}`,
       notes: a.notes
     })),
     ...(history ?? []).map((h) => ({
       id: `s-${h.id}`,
       atUtc: h.atUtc,
       kind: 'status' as const,
-      label: 'Статус',
-      detail: `${h.fromStatus ? `${STATUS_LABELS[h.fromStatus as BatchStatus]} → ` : ''}${STATUS_LABELS[h.toStatus as BatchStatus]}`
+      label: t('journal.status'),
+      detail: `${h.fromStatus ? `${t(`batches.status.${h.fromStatus}`)} → ` : ''}${t(`batches.status.${h.toStatus}`)}`
     }))
   ].sort((a, b) => b.atUtc.localeCompare(a.atUtc)) // свежие сверху
 
@@ -113,7 +110,7 @@ export function JournalSection(props: { batch: BatchDto }): ReactElement {
   return (
     <section className="journal">
       <div className="screen-header">
-        <h3>Журнал партии</h3>
+        <h3>{t('journal.batchTitle')}</h3>
         <button
           type="button"
           onClick={() => {
@@ -121,7 +118,7 @@ export function JournalSection(props: { batch: BatchDto }): ReactElement {
             setFormOpen(true)
           }}
         >
-          Операция…
+          {t('journal.addOperation')}
         </button>
       </div>
 
@@ -143,16 +140,16 @@ export function JournalSection(props: { batch: BatchDto }): ReactElement {
                       setFormOpen(true)
                     }}
                   >
-                    Правка
+                    {t('journal.editBtn')}
                   </button>
-                  <button type="button" onClick={() => setConfirmDelete(e.id.slice(2))}>Удалить</button>
+                  <button type="button" onClick={() => setConfirmDelete(e.id.slice(2))}>{t('common.delete')}</button>
                 </>
               ) : null}
               <span className="muted">{e.atUtc.slice(0, 16).replace('T', ' ')}</span>
             </div>
           </li>
         ))}
-        {timeline.length === 0 ? <li className="muted">Событий пока нет.</li> : null}
+        {timeline.length === 0 ? <li className="muted">{t('journal.emptyEvents')}</li> : null}
       </ul>
 
       {formOpen ? (
@@ -173,10 +170,10 @@ export function JournalSection(props: { batch: BatchDto }): ReactElement {
       ) : null}
 
       {confirmDelete ? (
-        <Modal title="Удалить операцию?" onClose={() => setConfirmDelete(null)}>
+        <Modal title={t('journal.deleteTitle')} onClose={() => setConfirmDelete(null)}>
           <div className="form-actions">
-            <button type="button" className="danger" onClick={() => deleteOp(confirmDelete)}>Удалить</button>
-            <button type="button" onClick={() => setConfirmDelete(null)}>Отмена</button>
+            <button type="button" className="danger" onClick={() => deleteOp(confirmDelete)}>{t('common.delete')}</button>
+            <button type="button" onClick={() => setConfirmDelete(null)}>{t('common.cancel')}</button>
           </div>
         </Modal>
       ) : null}
@@ -190,6 +187,7 @@ function OperationDialog(props: {
   onClose(): void
   onSubmit(input: Omit<OperationInput, 'batchId'>, id?: string): Promise<void>
 }): ReactElement {
+  const { t } = useTranslation()
   const { existing } = props
   const [kind, setKind] = useState<OperationKind>(
     (existing?.kind as OperationKind) ?? 'rack'
@@ -213,23 +211,23 @@ function OperationDialog(props: {
         existing?.id
       )
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setError(describeError(e, t))
     }
   }
 
   return (
-    <Modal title={existing ? 'Правка операции' : 'Новая операция'} onClose={props.onClose}>
+    <Modal title={existing ? t('journal.editTitle') : t('journal.new')} onClose={props.onClose}>
       <form onSubmit={(e) => void submit(e)}>
         <label>
-          Операция
+          {t('journal.field.kind')}
           <select value={kind} onChange={(e) => setKind(e.target.value as OperationKind)}>
-            {Object.entries(OPERATION_KIND_LABELS).map(([v, label]) => (
-              <option key={v} value={v}>{label}</option>
+            {operationKindSchema.options.map((v) => (
+              <option key={v} value={v}>{t(`journal.kind.${v}`)}</option>
             ))}
           </select>
         </label>
         <label>
-          Дата
+          {t('journal.field.date')}
           <input
             type="date"
             value={atUtc}
@@ -237,13 +235,13 @@ function OperationDialog(props: {
           />
         </label>
         <label>
-          Заметки (наблюдения)
+          {t('journal.field.notes')}
           <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} />
         </label>
         {error ? <p className="error-text">{error}</p> : null}
       <div className="form-actions">
-        <button type="submit">Сохранить</button>
-        <button type="button" onClick={props.onClose}>Отмена</button>
+        <button type="submit">{t('common.save')}</button>
+        <button type="button" onClick={props.onClose}>{t('common.cancel')}</button>
       </div>
     </form>
     </Modal>

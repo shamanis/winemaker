@@ -1,20 +1,27 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactElement } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { BatchDto, MeasurementDto, MeasurementKind } from '@shared/ipc/contracts'
-import { resolveMeasurement, type PipelineContext } from '@shared/calculations/pipeline'
+import { measurementKindSchema } from '@shared/ipc/contracts'
+import { resolveMeasurement, type PipelineContext, type TraceMessage } from '@shared/calculations/pipeline'
 import { formatDensity } from '@shared/calculations/analysis'
 import { toUtcIso } from '@shared/time/utc'
-import { useCatalogsStore, INSTRUMENT_TYPE_LABELS } from '../store/catalogs-store'
+import { useCatalogsStore } from '../store/catalogs-store'
 import { Modal } from '../ui/Modal'
 import { useSettingsStore } from '../store/settings-store'
 import {
   useMeasurementsStore,
   lastDensityMeasurement
 } from '../store/measurements-store'
+import { describeError } from '../errors'
 
-const KIND_LABELS: Record<MeasurementKind, string> = {
-  density: 'Плотность',
-  temperature: 'Температура',
-  ph: 'pH'
+/** Сообщение следа к тексту: по коду на текущем языке; записи без кодов — сохранённый текст. */
+function traceText(
+  message: string | undefined,
+  code: TraceMessage | undefined,
+  t: ReturnType<typeof useTranslation>['t']
+): string | null {
+  if (code) return t(code.code, { ...code.params })
+  return message ?? null
 }
 
 /** Собирает контекст коррекции на клиенте — те же данные, что и на сервере. */
@@ -51,6 +58,7 @@ export function MeasurementDialog(props: {
   onClose(): void
 }): ReactElement {
   const { batch, onClose } = props
+  const { t } = useTranslation()
   const instruments = useCatalogsStore((s) => s.instruments)
   const catalogsLoaded = useCatalogsStore((s) => s.loaded)
   const initCatalogs = useCatalogsStore((s) => s.init)
@@ -113,13 +121,13 @@ export function MeasurementDialog(props: {
   const preview = useMemo(() => {
     const value = Number(rawValue)
     if (kind !== 'density' || rawValue.trim() === '' || !Number.isFinite(value)) return null
-    if (!instrumentId) return { error: 'Для замера плотности укажите прибор' }
+    if (!instrumentId) return { error: t('errors.instrumentRequired') }
     const selected = instruments.find((i) => i.id === instrumentId)
-    if (!selected) return { error: 'Прибор не найден в справочнике' }
-    if (unit === 'brix' && (value < 0 || value > 80)) return { error: 'Brix вне диапазона 0–80' }
-    if (unit === 'sg' && (value < 0.9 || value > 1.2)) return { error: 'SG вне диапазона 0.9–1.2' }
+    if (!selected) return { error: t('errors.instrumentNotFound') }
+    if (unit === 'brix' && (value < 0 || value > 80)) return { error: t('measurements.preview.brixRange') }
+    if (unit === 'sg' && (value < 0.9 || value > 1.2)) return { error: t('measurements.preview.sgRange') }
     if (isHydrometer && tempC.trim() !== '' && !Number.isFinite(Number(tempC))) {
-      return { error: 'Температура введена неверно' }
+      return { error: t('measurements.preview.badTemp') }
     }
     return {
       resolved: resolveMeasurement(
@@ -133,14 +141,14 @@ export function MeasurementDialog(props: {
         buildContext(batch, instrumentId)
       )
     }
-  }, [kind, rawValue, unit, instrumentId, tempC, isHydrometer, batch, measuredAt, instruments])
+  }, [kind, rawValue, unit, instrumentId, tempC, isHydrometer, batch, measuredAt, instruments, t])
 
   const submit = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault()
     setError(null)
     const value = Number(rawValue)
     if (rawValue.trim() === '' || !Number.isFinite(value)) {
-      setError('Введите значение')
+      setError(t('measurements.enterValue'))
       return
     }
     const input = {
@@ -157,19 +165,19 @@ export function MeasurementDialog(props: {
       setSavedCount((n) => n + 1)
       setRawValue('')
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setError(describeError(e, t))
     }
   }
 
   return (
-    <Modal title="Замер" onClose={onClose}>
+    <Modal title={t('measurements.title')} onClose={onClose}>
       <form onSubmit={(e) => void submit(e)}>
         {savedCount > 0 ? (
-          <p className="muted">Сохранено замеров за этот сеанс: {savedCount}</p>
+          <p className="muted">{t('measurements.savedCount', { count: savedCount })}</p>
         ) : null}
 
         <label>
-          Дата и время замера
+          {t('measurements.measuredAt')}
           <input
             type="datetime-local"
             value={measuredAt}
@@ -178,10 +186,10 @@ export function MeasurementDialog(props: {
         </label>
 
         <label>
-          Тип замера
+          {t('measurements.kindLabel')}
           <select value={kind} onChange={(e) => setKind(e.target.value as MeasurementKind)}>
-            {Object.entries(KIND_LABELS).map(([v, label]) => (
-              <option key={v} value={v}>{label}</option>
+            {measurementKindSchema.options.map((v) => (
+              <option key={v} value={v}>{t(`measurements.kind.${v}`)}</option>
             ))}
           </select>
         </label>
@@ -190,7 +198,7 @@ export function MeasurementDialog(props: {
           <>
             <div className="inline-fields">
               <label>
-                Показание ({unit === 'brix' ? '°Bx' : 'SG'})
+                {t('measurements.field.reading')} ({unit === 'brix' ? '°Bx' : 'SG'})
                 <input
                   ref={valueRef}
                   value={rawValue}
@@ -201,7 +209,7 @@ export function MeasurementDialog(props: {
                 />
               </label>
               <label>
-                Единицы
+                {t('measurements.field.units')}
                 <select value={unit} onChange={(e) => setUnit(e.target.value as 'sg' | 'brix')}>
                   <option value="brix">Brix</option>
                   <option value="sg">SG</option>
@@ -209,21 +217,21 @@ export function MeasurementDialog(props: {
               </label>
             </div>
             <label>
-              Прибор
+              {t('measurements.field.instrument')}
               <select
                 value={instrumentId}
                 onChange={(e) => setInstrumentId(e.target.value)}
               >
-                <option value="">— выберите прибор —</option>
+                <option value="">{t('measurements.chooseInstrument')}</option>
                 {instruments.map((i) => (
                   <option key={i.id} value={i.id}>
-                    {i.name} ({INSTRUMENT_TYPE_LABELS[i.type]})
+                    {i.name} ({t(`catalogs.type.${i.type}`)})
                   </option>
                 ))}
               </select>
             </label>
             <label>
-              {isHydrometer ? 'Температура сусла, °C (обязательна для ареометра)' : 'Температура сусла, °C'}
+              {isHydrometer ? t('measurements.tempHydrometer') : t('measurements.temp')}
               <input
                 value={tempC}
                 onChange={(e) => setTempC(e.target.value)}
@@ -241,16 +249,16 @@ export function MeasurementDialog(props: {
               {preview && 'resolved' in preview && preview.resolved ? (
                 <>
                   <p className="muted">
-                    Скорректированное значение:{' '}
+                    {t('measurements.preview.corrected')}{' '}
                     <strong>
                       {formatDensity(preview.resolved.correctedSg, unit)}
                     </strong>
                   </p>
-                  {preview.resolved.warnings.map((w) => (
-                    <p key={w} className="error-text">⚠ {w}</p>
+                  {preview.resolved.warnings.map((w, idx) => (
+                    <p key={`${w.code}-${idx}`} className="error-text">⚠ {t(w.code, { ...w.params })}</p>
                   ))}
-                  {preview.resolved.infos.map((i) => (
-                    <p key={i} className="info-text">ℹ {i}</p>
+                  {preview.resolved.infos.map((i, idx) => (
+                    <p key={`${i.code}-${idx}`} className="info-text">ℹ {t(i.code, { ...i.params })}</p>
                   ))}
                 </>
               ) : null}
@@ -258,7 +266,7 @@ export function MeasurementDialog(props: {
           </>
         ) : (
           <label>
-            {KIND_LABELS[kind]}
+            {t(`measurements.kind.${kind}`)}
             <input
               ref={valueRef}
               value={rawValue}
@@ -272,8 +280,8 @@ export function MeasurementDialog(props: {
 
         {error ? <p className="error-text">{error}</p> : null}
       <div className="form-actions">
-        <button type="submit">Сохранить (Enter)</button>
-        <button type="button" onClick={onClose}>Закрыть</button>
+        <button type="submit">{t('common.save')}</button>
+        <button type="button" onClick={onClose}>{t('common.close')}</button>
       </div>
     </form>
     </Modal>
@@ -282,6 +290,7 @@ export function MeasurementDialog(props: {
 
 /** Секция «Замеры» в карточке партии: хронология, след, ревизии. */
 export function MeasurementsSection(props: { batch: BatchDto }): ReactElement {
+  const { t } = useTranslation()
   const { batch } = props
   const list = useMeasurementsStore((s) => s.byBatch[batch.id])
   const loadFor = useMeasurementsStore((s) => s.loadFor)
@@ -301,12 +310,12 @@ export function MeasurementsSection(props: { batch: BatchDto }): ReactElement {
   return (
     <section className="measurements">
       <div className="screen-header">
-        <h3>Замеры</h3>
+        <h3>{t('measurements.section.title')}</h3>
         <button
           type="button"
           className="btn-fab"
-          title="Новый замер"
-          aria-label="Новый замер"
+          title={t('measurements.section.new')}
+          aria-label={t('measurements.section.new')}
           onClick={() => setDialogOpen(true)}
         >
           +
@@ -315,18 +324,19 @@ export function MeasurementsSection(props: { batch: BatchDto }): ReactElement {
 
       <ul className="item-list">
         {(list ?? []).map((m) => {
-          const warnings = (m.corrections as { warnings?: string[] }).warnings ?? []
-          const infos = (m.corrections as { infos?: string[] }).infos ?? []
+          const stored = m.corrections as { warnings?: string[]; warningCodes?: TraceMessage[]; infos?: string[]; infoCodes?: TraceMessage[] }
+          const warnings = stored.warnings ?? []
+          const infos = stored.infos ?? []
           return (
             <li key={m.id}>
             <button
               type="button"
               className="item-open"
               onClick={() => setDetailId(m.id)}
-              title="Открыть карточку замера"
+              title={t('measurements.section.openCard')}
             >
               <div>
-                <strong>{KIND_LABELS[m.kind]}</strong>:{' '}
+                <strong>{t(`measurements.kind.${m.kind}`)}</strong>:{' '}
                 {m.kind === 'density'
                   ? `${m.rawValue} ${m.unit === 'brix' ? '°Bx' : 'SG'} → ${formatDensity(m.correctedSg, densityUnit)}`
                   : `${m.rawValue} ${m.kind === 'temperature' ? '°C' : 'pH'}`}
@@ -335,13 +345,13 @@ export function MeasurementsSection(props: { batch: BatchDto }): ReactElement {
               <div className="muted">{m.measuredAtUtc.slice(0, 16).replace('T', ' ')} UTC</div>
             </button>
               <div className="item-actions">
-                <button type="button" onClick={() => setConfirmDelete(m.id)}>Удалить</button>
+                <button type="button" onClick={() => setConfirmDelete(m.id)}>{t('common.delete')}</button>
               </div>
             </li>
           )
         })}
         {(list ?? []).length === 0 ? (
-          <li className="muted">Замеров пока нет.</li>
+          <li className="muted">{t('measurements.section.empty')}</li>
         ) : null}
       </ul>
 
@@ -377,12 +387,12 @@ function DeleteMeasurementDialog(props: {
   onConfirm(): void
   onClose(): void
 }): ReactElement {
+  const { t } = useTranslation()
   const [checked, setChecked] = useState(false)
   return (
-    <Modal title="Удалить замер?" onClose={props.onClose}>
+    <Modal title={t('measurements.deleteTitle')} onClose={props.onClose}>
       <p>
-        Замер исчезнет из графика и расчётов. Снапшот сохранится в выгрузке
-        партии для аудита.
+        {t('measurements.deleteText')}
       </p>
       <label className="confirm-checkbox">
         <input
@@ -390,19 +400,19 @@ function DeleteMeasurementDialog(props: {
           checked={checked}
           onChange={(e) => setChecked(e.target.checked)}
         />
-        Я точно понимаю, что делаю
+        {t('measurements.awareCheckbox')}
       </label>
       <div className="form-actions">
         <button
           type="button"
           className="danger"
           disabled={!checked}
-          title={checked ? undefined : 'Сначала подтвердите осознанность'}
+          title={checked ? undefined : t('measurements.awareRequired')}
           onClick={props.onConfirm}
         >
-          Удалить
+          {t('common.delete')}
         </button>
-        <button type="button" onClick={props.onClose}>Отмена</button>
+        <button type="button" onClick={props.onClose}>{t('common.cancel')}</button>
       </div>
     </Modal>
   )
@@ -412,60 +422,75 @@ function MeasurementDetail(props: {
   measurement: MeasurementDto
   onClose(): void
 }): ReactElement {
+  const { t } = useTranslation()
   const { measurement: m, onClose } = props
   const densityUnit = useSettingsStore((s) => s.settings?.densityUnit ?? 'sg')
-  const steps = (m.corrections as { steps?: Array<{ type: string; input: number; output: number; note?: string }>; warnings?: string[]; infos?: string[] }).steps ?? []
-  const warnings = (m.corrections as { warnings?: string[] }).warnings ?? []
-  const infos = (m.corrections as { infos?: string[] }).infos ?? []
+  const stored = m.corrections as {
+    steps?: Array<{ type: string; input: number; output: number; note?: string; code?: string; params?: Record<string, string | number> }>
+    warnings?: string[]
+    warningCodes?: TraceMessage[]
+    infos?: string[]
+    infoCodes?: TraceMessage[]
+  }
+  const steps = stored.steps ?? []
+  const warnings = stored.warnings ?? []
+  const warningCodes = stored.warningCodes ?? []
+  const infos = stored.infos ?? []
+  const infoCodes = stored.infoCodes ?? []
   const instrument = useCatalogsStore((s) => s.instruments.find((i) => i.id === m.instrumentId))
 
   return (
-    <Modal title={`Замер — ${KIND_LABELS[m.kind]}`} onClose={onClose}>
+    <Modal title={`${t('measurements.title')} — ${t(`measurements.kind.${m.kind}`)}`} onClose={onClose}>
         <dl className="detail-list">
-          <dt>Сырое значение</dt>
+          <dt>{t('measurements.detail.raw')}</dt>
           <dd>
             {m.rawValue} {m.kind === 'density' ? (m.unit === 'brix' ? '°Bx' : 'SG') : m.kind === 'temperature' ? '°C' : 'pH'}
           </dd>
           {m.kind === 'density' ? (
             <>
-              <dt>Прибор</dt>
+              <dt>{t('measurements.detail.instrument')}</dt>
               <dd>{instrument ? instrument.name : '—'}</dd>
               {m.tempC != null ? (
                 <>
-                  <dt>Температура сусла</dt>
+                  <dt>{t('measurements.detail.temp')}</dt>
                   <dd>{m.tempC} °C</dd>
                 </>
               ) : null}
-              <dt>Скорректировано</dt>
+              <dt>{t('measurements.detail.corrected')}</dt>
               <dd>
                 {formatDensity(m.correctedSg, densityUnit)}
-                {m.correctedBrix != null ? ` · WCF-показание ${m.correctedBrix.toFixed(2)} °Bx` : ''}
+                {m.correctedBrix != null ? ` · ${t('measurements.detail.wcfReading', { value: m.correctedBrix.toFixed(2) })}` : ''}
               </dd>
             </>
           ) : null}
-          <dt>Время замера</dt>
+          <dt>{t('measurements.detail.time')}</dt>
           <dd>{m.measuredAtUtc.slice(0, 16).replace('T', ' ')} UTC</dd>
         </dl>
 
-        <h4>След коррекции</h4>
+        <h4>{t('measurements.detail.traceTitle')}</h4>
         <ol>
-          {steps.map((s, idx) => (
-            <li key={idx}>
-              <strong>{s.type}</strong>: {s.input} → {s.output}
-              {s.note ? <div className="muted">{s.note}</div> : null}
-            </li>
-          ))}
-          {steps.length === 0 ? <li className="muted">Коррекции не применялись</li> : null}
+          {steps.map((s, idx) => {
+            const text = s.code ? t(s.code, { ...s.params }) : s.note
+            return (
+              <li key={idx}>
+                <strong>{s.type}</strong>: {s.input} → {s.output}
+                {text ? <div className="muted">{text}</div> : null}
+              </li>
+            )
+          })}
+          {steps.length === 0 ? <li className="muted">{t('measurements.detail.noCorrections')}</li> : null}
         </ol>
-        {warnings.map((w) => (
-          <p key={w} className="error-text">⚠ {w}</p>
-        ))}
-        {infos.map((i) => (
-          <p key={i} className="info-text">ℹ {i}</p>
-        ))}
+        {warnings.map((w, idx) => {
+          const text = traceText(w, warningCodes[idx], t)
+          return text ? <p key={`${idx}-${text.slice(0, 8)}`} className="error-text">⚠ {text}</p> : null
+        })}
+        {infos.map((i, idx) => {
+          const text = traceText(i, infoCodes[idx], t)
+          return text ? <p key={`${idx}-${text.slice(0, 8)}`} className="info-text">ℹ {text}</p> : null
+        })}
 
       <div className="form-actions">
-        <button type="button" onClick={onClose}>Закрыть</button>
+        <button type="button" onClick={onClose}>{t('common.close')}</button>
       </div>
     </Modal>
   )

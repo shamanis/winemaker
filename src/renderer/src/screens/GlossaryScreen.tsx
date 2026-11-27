@@ -1,48 +1,39 @@
 import type { ReactElement } from 'react'
-import { GLOSSARY, GLOSSARY_ORDER, FORMULAS } from '../help/glossary'
-
-const GLOSSARY_LABELS: Record<string, string> = {
-  sg: 'SG',
-  og: 'OG',
-  fg: 'FG',
-  brix: 'Brix (°Bx)',
-  atc: 'ATC',
-  wcf: 'WCF',
-  abv: 'ABV',
-  ph: 'pH',
-  tcal: 'T_кал',
-  ferment: 'Брожение'
-}
+import { useTranslation } from 'react-i18next'
+import { GLOSSARY_ORDER, FORMULA_IDS } from '../help/glossary'
 
 /**
  * Экран «Справка» (спека glossary): глоссарий + формулы из vision,
- * доступ без выхода из приложения (6.4.3).
+ * доступ без выхода из приложения (6.4.3). Тексты и записи формул —
+ * из каталога переводов.
  */
 export function GlossaryScreen(): ReactElement {
+  const { t } = useTranslation()
   return (
     <section className="screen">
-      <h2>Справка</h2>
+      <h2>{t('help.title')}</h2>
 
-      <h3 className="help-heading">Глоссарий</h3>
+      <h3 className="help-heading">{t('help.glossaryTitle')}</h3>
       <dl className="help-list">
         {GLOSSARY_ORDER.map((id) => (
           <div key={id} className="help-item">
-            <dt>{GLOSSARY_LABELS[id] ?? id}</dt>
-            <dd>{GLOSSARY[id]}</dd>
+            <dt>{t(`help.term.${id}`)}</dt>
+            <dd>{t(`help.termDesc.${id}`)}</dd>
           </div>
         ))}
       </dl>
 
-      <h3 className="help-heading">Формулы</h3>
+      <h3 className="help-heading">{t('help.formulasTitle')}</h3>
       <div className="help-formulas">
-        {FORMULAS.map((f) => (
-          <div key={f.title} className="card">
-            <h4>{f.title}</h4>
-            <code className="formula">{f.formula}</code>
-            <p className="muted">{f.note}</p>
+        {FORMULA_IDS.map((id) => (
+          <div key={id} className="card">
+            <h4>{t(`help.formulas.${id}.title`)}</h4>
+            <code className="formula">{t(`help.formulas.${id}.formula`)}</code>
+            <p className="muted">{t(`help.formulas.${id}.note`)}</p>
           </div>
         ))}
       </div>
     </section>
   )
 }
+

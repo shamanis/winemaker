@@ -9,6 +9,9 @@ import { MeasurementRepository } from '../src/main/measurements/repository'
 import { InstrumentRepository } from '../src/main/catalogs/repositories'
 import { createResolveContextProvider } from '../src/main/measurements/context'
 import type { AppStateRepository } from '../src/main/app-state/repository'
+import { createI18n, type TranslateFn } from '../src/shared/i18n/create-i18n'
+
+const ruT: TranslateFn = createI18n('ru').t
 
 const MIGRATIONS_FOLDER = resolve(__dirname, '..', 'drizzle')
 const handles: DatabaseHandle[] = []
@@ -68,7 +71,8 @@ describe('buildExportPayload (data-portability)', () => {
     const measurements = new MeasurementRepository(
       handle.db,
       () => undefined,
-      createResolveContextProvider({ appState: appStateStub, instruments, batches })
+      createResolveContextProvider({ appState: appStateStub, instruments, batches }),
+      () => ruT
     )
     const operations = new OperationRepository(handle.db, () => undefined)
 

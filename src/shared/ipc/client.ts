@@ -27,6 +27,8 @@ import {
   type EventListener
 } from '../events/events'
 import type { WinemakerTransport } from './bridge'
+import { IpcError } from './errors'
+import type { Language } from '../i18n/resolve-language'
 
 /**
  * Типизированный клиент над транспортом preload (design.md D3).
@@ -41,7 +43,9 @@ async function invokeChannel<K extends ChannelKey>(
   const raw = await transport.invoke(channels[key].name, payload, timeoutMs)
   const envelope = ipcEnvelopeSchema.parse(raw)
   if (!envelope.ok) {
-    throw new Error(`[${envelope.error.code}] ${envelope.error.message}`)
+    // Ошибка несёт ключ каталога для показа на языке интерфейса (design D8);
+    // message остаётся машинным — для журнала консоли.
+    throw new IpcError(envelope.error)
   }
   return channels[key].response.parse(envelope.data) as ChannelResponse<K>
 }
@@ -133,11 +137,12 @@ export function createApiClient(transport: WinemakerTransport) {
     },
 
     settings: {
-      get: async (): Promise<AppSettings> =>
-        (await invokeChannel(transport, 'settingsGet', {})).settings,
-      set: async (settings: AppSettings): Promise<void> => {
-        await invokeChannel(transport, 'settingsSet', { settings })
-      }
+      get: async (): Promise<{ settings: AppSettings; resolvedLanguage: Language }> =>
+        invokeChannel(transport, 'settingsGet', {}),
+      set: async (
+        settings: AppSettings
+      ): Promise<{ ok: boolean; resolvedLanguage: Language }> =>
+        invokeChannel(transport, 'settingsSet', { settings })
     },
 
     measurements: {

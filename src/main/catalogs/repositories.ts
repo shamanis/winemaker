@@ -4,6 +4,7 @@ import { instruments, yeastStrains, type InstrumentRow, type NewInstrumentRow, t
 import type { AppDatabase } from '../db/database'
 import { nowUtcIso } from '../../shared/time/utc'
 import { computePersonalWcf } from '../../shared/calculations/correction'
+import { AppError } from '../../shared/ipc/errors'
 
 /** markDirty планировщика бэкапов — на каждую мутацию. */
 export type MarkDirty = () => void
@@ -64,9 +65,9 @@ export class InstrumentRepository {
     hydrometerBx: number
   ): { instrument: InstrumentRow; wcf: number } {
     const instrument = this.get(instrumentId)
-    if (!instrument) throw new Error('Instrument not found')
+    if (!instrument) throw new AppError('errors.instrumentNotFound')
     if (!instrument.type.startsWith('refractometer')) {
-      throw new Error('Calibration pair applies to a refractometer')
+      throw new AppError('errors.calibrationPairRefractometer')
     }
     const wcf = computePersonalWcf(refrBrix, hydrometerBx)
     const pair: CalibrationPair = {

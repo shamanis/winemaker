@@ -264,9 +264,11 @@ body {
 }
 
 /* ── Единый слой контролов: все input/select/textarea в приложении ── */
-.app input:not([type='checkbox']):not([type='radio']):not([type='range']),
-.app select,
-.app textarea {
+/* :is(.app, .modal-overlay): модалки рендерятся порталом в document.body
+   (вне .app) — без второго скоупа контролы в модалках остаются системными. */
+:is(.app, .modal-overlay) input:not([type='checkbox']):not([type='radio']):not([type='range']),
+:is(.app, .modal-overlay) select,
+:is(.app, .modal-overlay) textarea {
   font: inherit;
   color: var(--color-text);
   background: var(--color-bg);
@@ -277,7 +279,7 @@ body {
   width: 100%;
 }
 
-.app select {
+:is(.app, .modal-overlay) select {
   appearance: none;
   padding-right: 1.75rem;
   background-image: var(--select-chevron);
@@ -285,22 +287,22 @@ body {
   background-position: right 0.5rem center;
 }
 
-.app textarea {
+:is(.app, .modal-overlay) textarea {
   height: auto;
   min-height: 2.125rem;
   resize: vertical;
 }
 
-.app input:not([type='checkbox']):not([type='radio']):not([type='range']):focus-visible,
-.app select:focus-visible,
-.app textarea:focus-visible {
+:is(.app, .modal-overlay) input:not([type='checkbox']):not([type='radio']):not([type='range']):focus-visible,
+:is(.app, .modal-overlay) select:focus-visible,
+:is(.app, .modal-overlay) textarea:focus-visible {
   outline: none;
   border-color: var(--color-focus);
   box-shadow: 0 0 0 2px var(--color-focus);
 }
 
-.app input:disabled,
-.app select:disabled {
+:is(.app, .modal-overlay) input:disabled,
+:is(.app, .modal-overlay) select:disabled {
   color: var(--color-text-muted);
   background: var(--color-bg-muted);
   cursor: not-allowed;
@@ -363,9 +365,31 @@ body {
   background: var(--color-bg-muted);
 }
 
+/* Primary-действие формы/диалога: классическая заливка акцентом.
+   Опасные и второстепенные кнопки — type=button с .danger, конфликта нет;
+   правило размещено ДО блока :disabled, чтобы disabled оставался серым. */
+.form-actions button[type='submit'] {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-on-accent);
+}
+
+.form-actions button[type='submit']:hover {
+  background: var(--color-accent-hover);
+  border-color: var(--color-accent-hover);
+}
+
+/* Danger: залитая красная (парность primary) — hover и :disabled перекрываются
+   правилами ниже по специфичности/порядку. */
 .form-actions button.danger {
-  color: var(--color-danger);
+  background: var(--color-danger);
   border-color: var(--color-danger);
+  color: var(--color-on-danger);
+}
+
+.form-actions button.danger:hover {
+  background: var(--color-danger-hover);
+  border-color: var(--color-danger-hover);
 }
 
 /* Отключённые кнопки: серые, независимо от варианта (danger и др.) */
